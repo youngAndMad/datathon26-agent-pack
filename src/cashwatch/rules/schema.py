@@ -77,6 +77,11 @@ class SourceStatus(_M):
 class Temporal(_M):
     kind: TemporalKind
     transition_from: Id | None = None
+    # When the prior state is the visual negation of the decisive predicate (e.g. "inside zone"
+    # vs "fully outside zone"), frames that visibly contradict the decisive predicate BEFORE its
+    # first supporting frame also establish the prior state. Small VLMs answer complementary
+    # predicates inconsistently; this keeps the transition grounded in the same per-frame answers.
+    transition_from_negates_anchor: bool = False
     context_before_sec: Annotated[float, Field(ge=0, le=60)] = 3.0
     context_after_sec: Annotated[float, Field(ge=0, le=60)] = 3.0
     requires_complete_interval: bool = False

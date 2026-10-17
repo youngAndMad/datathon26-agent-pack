@@ -216,12 +216,19 @@ class Rules:
             rejected.append("supplied frame from a different source")
         times = {i: f.relative_sec for i, f in fmap.items()}
         ass, issues = self._clean(rule, result.assessments, set(times))
+        ass = _augment_transition(rule, ass, times)
         if not result.schema_valid:
             unresolved.append("verification output schema invalid")
 
+        t = rule.temporal
+        trans_from = t.transition_from if t.kind == "transition" else None
         for p in rule.predicates:
             a = ass.get(p.predicate_id)
             st = a.state if a else "unknown"
+            if p.predicate_id == trans_from and st == "contradicted" and a and a.supporting_frame_ids:
+                # A state that held before the decisive change is time-varying by definition;
+                # its earlier supporting frames are checked against the anchor below.
+                st = "supported"
             if p.kind == "exclusion":
                 if st == "supported":
                     rejected.append(f"exclusion supported: {p.predicate_id}")
@@ -369,6 +376,31 @@ def _sup_times(ass: dict[str, PredicateAssessment], pid: str, times: dict[str, f
     if not a or a.state != "supported":
         return []
     return sorted(times[i] for i in a.supporting_frame_ids if i in times)
+
+
+def _augment_transition(rule: RuleSpec, ass: dict[str, PredicateAssessment],
+                        times: dict[str, float]) -> dict[str, PredicateAssessment]:
+    t = rule.temporal
+    ap = rule.anchor_predicate
+    if not (t.kind == "transition" and t.transition_from and t.transition_from_negates_anchor and ap):
+        return ass
+    dec = ass.get(ap.predicate_id)
+    if not dec or dec.state != "supported":
+        return ass
+    first_sup = min((times[i] for i in dec.supporting_frame_ids if i in times), default=None)
+    if first_sup is None:
+        return ass
+    prior = [i for i in dec.contradicting_frame_ids if i in times and times[i] < first_sup]
+    if not prior:
+        return ass
+    cur = ass.get(t.transition_from)
+    sup = sorted(set(prior) | set(cur.supporting_frame_ids if cur else []), key=lambda i: (times.get(i, 0.0), i))
+    out = dict(ass)
+    out[t.transition_from] = PredicateAssessment(
+        predicate_id=t.transition_from, state="supported", supporting_frame_ids=sup,
+        contradicting_frame_ids=[i for i in (cur.contradicting_frame_ids if cur else []) if i not in sup],
+        visibility=dec.visibility, reasoning_note="derived: decisive predicate contradicted before its first support")
+    return out
 
 
 def _sup_frames(ass: dict[str, PredicateAssessment], pid: str, times: dict[str, float]) -> list[str]:

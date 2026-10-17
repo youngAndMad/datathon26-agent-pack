@@ -17,7 +17,7 @@
     "max_candidates_refined": 5,
     "max_visual_tokens": null,
     "observe_max_new_tokens": 512,
-    "verify_max_new_tokens": 384
+    "verify_max_new_tokens": 640
   },
   "sampling_tiers": [
     {"tier_id": "w12-1fps", "est_window_sec": 16.0},

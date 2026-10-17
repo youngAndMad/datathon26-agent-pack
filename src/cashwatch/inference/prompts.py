@@ -31,7 +31,7 @@ MAX_OBJECT_CHARS = 80
 MAX_ACTOR_CHARS = 32
 
 OBSERVE_PROMPT_VERSION = "observe-v1"
-VERIFY_PROMPT_VERSION = "verify-v1"
+VERIFY_PROMPT_VERSION = "verify-v2"
 REPAIR_PROMPT_VERSION = "repair-v1"
 
 OBSERVE_SYSTEM = f"""You inspect ordered visual frames from a cashier work scene. You are a visual observer, not a legal decision maker.
@@ -67,7 +67,7 @@ Describe visible changes, handovers, object placement and actor movements.
 
 VERIFY_SYSTEM = f"""Verify the visual predicates of a candidate event using only the supplied frames and their real timestamps. The application provides predicate definitions and counterexamples from a reviewed rule registry. You do not decide whether a law was violated and must not invent a legal reference.
 
-For each predicate return supported, contradicted or unknown, with supplied supporting and contradicting frame IDs. Explain only the visible fact behind that state. Consider the provided compliant alternatives. If the relevant person, object, area, opportunity interval or transaction boundary is not visible enough, return unknown.
+For each predicate return supported, contradicted or unknown, with supplied supporting and contradicting frame IDs. supported means the predicate statement is visibly true in at least one frame; contradicted means it is visibly false in every frame where the relevant area is visible; unknown means it cannot be determined. Predicates may change over time: if a statement is true in some frames and false in others, return supported, list frames where it is true as supporting_frame_ids and frames where it is false as contradicting_frame_ids. For a question asking whether something is ambiguous, occluded or partial, answer contradicted when the view is clearly unambiguous. Explain only the visible fact behind that state. Consider the provided compliant alternatives. If the relevant person, object, area, opportunity interval or transaction boundary is not visible enough, return unknown.
 
 Do not interpret not observed as absent. To support an omission, the trigger, full required opportunity and completion boundary must be established at a sampling resolution that can exclude the action. Do not infer authorization, identity, accounting correctness, intent, lock operation or device capabilities without actual visual evidence.
 
