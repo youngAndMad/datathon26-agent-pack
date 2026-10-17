@@ -107,7 +107,13 @@ def create_perception(settings, *, config=None, responder=None, stderr_path: Pat
     from cashwatch.inference.supervisor import ChildGenerator
     options: dict[str, Any] = {"device": settings.device}
     # Optional Windows workstation launch profile; shared configs remain unchanged.
-    if os.name == "nt" and os.environ.get("CASHWATCH_WINDOWS_CPU_INT8") == "1":
+    if os.name == "nt" and os.environ.get("CASHWATCH_WINDOWS_CUDA_NF4") == "1":
+        if (backend != "transformers" or settings.device != "cuda" or settings.mode != "test"
+                or os.environ.get("CASHWATCH_WINDOWS_CPU_INT8") == "1"
+                or os.environ.get("CASHWATCH_WINDOWS_CPU_LOW_MEMORY") == "1"):
+            raise PipelineError("model_unavailable", "Experimental CUDA NF4 requires test mode, transformers CUDA and no CPU profile")
+        options.update(device="cuda", cuda_nf4=True, dtype="float16")
+    elif os.name == "nt" and os.environ.get("CASHWATCH_WINDOWS_CPU_INT8") == "1":
         if settings.device not in ("cpu", "auto"):
             raise PipelineError("model_unavailable", "Windows INT8 profile requires CPU")
         options.update(device="cpu", windows_int8=True)

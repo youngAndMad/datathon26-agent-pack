@@ -7,6 +7,7 @@ param(
     [switch]$WindowsLocalTest,
     [switch]$LowMemory,
     [switch]$CpuInt8,
+    [switch]$CudaNf4,
     [ValidateSet('4b','2b')][string]$ModelSize = '4b',
     [ValidateSet('bfloat16', 'float32')][string]$LowMemoryDtype = 'bfloat16',
     [ValidateRange(1,1800)][int]$TimeoutSeconds = 240
@@ -17,12 +18,18 @@ if ($Mode -eq 'production' -and $Backend -eq 'fake') { throw 'Fake backend is fo
 if ($WindowsLocalTest -and $Mode -ne 'test') { throw 'WindowsLocalTest storage is only allowed in explicit test mode.' }
 if ($LowMemory -and ($Device -ne 'cpu' -or $Backend -ne 'transformers')) { throw 'LowMemory requires transformers on CPU.' }
 if ($CpuInt8 -and ($LowMemory -or $Device -ne 'cpu' -or $Backend -ne 'transformers')) { throw 'CpuInt8 requires transformers CPU without LowMemory disk offload.' }
+if ($CudaNf4 -and ($CpuInt8 -or $LowMemory -or $Device -ne 'cuda' -or $Backend -ne 'transformers' -or -not $WindowsLocalTest -or $ModelSize -ne '2b')) { throw 'CudaNf4 requires transformers CUDA, 2B and WindowsLocalTest without CPU profiles.' }
 if ($Mode -eq 'test') { Write-Warning 'TEST MODE: synthetic rules only; results do not establish banking violations.' }
 if ($Backend -eq 'fake') { Write-Warning 'FAKE BACKEND: plumbing check only; no real model inference.' }
 $Repo = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $Repo
 $Py = "$Repo\.venv-windows\Scripts\python.exe"
+if ($CudaNf4) { $Py = "$Repo\.tools\venv-cuda\Scripts\python.exe" }
 if (-not (Test-Path -LiteralPath $Py)) { throw 'Missing .venv-windows. Run deploy\setup.ps1 first.' }
+if ($CudaNf4) {
+    & $Py "$Repo\scripts\windows_cuda_probe.py"
+    if ($LASTEXITCODE -ne 0) { throw 'CUDA/NF4 preflight failed. No service was started.' }
+}
 $env:CASHWATCH_MODE = $Mode
 $env:CASHWATCH_BACKEND = $Backend
 $env:CASHWATCH_REGISTRY_PATH = if ($Mode -eq 'test') { "$Repo\rules\registry.test.yaml" } else { "$Repo\rules\registry.yaml" }
@@ -33,6 +40,7 @@ $env:CASHWATCH_DATA_DIR = "$Repo\data"
 $env:CASHWATCH_WINDOWS_TEST_INHERIT_ACL = if ($WindowsLocalTest) { '1' } else { '0' }
 $env:CASHWATCH_WINDOWS_CPU_LOW_MEMORY = if ($LowMemory) { '1' } else { '0' }
 $env:CASHWATCH_WINDOWS_CPU_INT8 = if ($CpuInt8) { '1' } else { '0' }
+$env:CASHWATCH_WINDOWS_CUDA_NF4 = if ($CudaNf4) { '1' } else { '0' }
 $env:CASHWATCH_WINDOWS_CPU_DTYPE = $LowMemoryDtype
 if ($WindowsLocalTest) {
     $env:CASHWATCH_DATA_DIR = "$Repo\data\windows-local"
@@ -42,7 +50,7 @@ $env:CASHWATCH_API_KEY_FILE = "$Repo\secrets\jury_api_key"
 $env:CASHWATCH_MODEL_PATH = "$Repo\models\qwen3-vl-4b-instruct"
 $env:CASHWATCH_MODEL_MANIFEST = "$Repo\models\manifest.json"
 if ($ModelSize -eq '2b') {
-    if (-not $CpuInt8 -or -not $WindowsLocalTest) { throw 'The experimental 2B profile requires CpuInt8 and WindowsLocalTest.' }
+    if ((-not $CpuInt8 -and -not $CudaNf4) -or -not $WindowsLocalTest) { throw 'The experimental 2B profile requires CpuInt8 or CudaNf4 and WindowsLocalTest.' }
     $env:CASHWATCH_MODEL_PATH = "$Repo\models\qwen3-vl-2b-instruct"
     $env:CASHWATCH_MODEL_MANIFEST = "$Repo\models\manifest.windows-2b.json"
 }

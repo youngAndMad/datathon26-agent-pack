@@ -48,6 +48,17 @@ class HfBackend:
         from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
         device = torch.device(self._device(torch))
+        cuda_nf4 = self.options.get("cuda_nf4", False)
+        quantization = self.options.get("windows_int8", False)
+        memory = self.options.get("max_memory")
+        offload_dir = self.options.get("offload_dir")
+        if cuda_nf4:
+            if device.type != "cuda":
+                raise ValueError("cuda_nf4 requires an explicit CUDA device")
+            if quantization or memory is not None or offload_dir is not None:
+                raise ValueError("cuda_nf4 cannot be combined with windows_int8 or disk offload")
+            if self.options.get("dtype") not in (None, "float16"):
+                raise ValueError("cuda_nf4 requires float16 compute dtype")
         if device.type not in {"cpu", "cuda", "mps"}:
             raise ValueError("HF backend supports cpu, cuda or mps devices")
         if device.type == "cuda" and not torch.cuda.is_available():
@@ -64,8 +75,19 @@ class HfBackend:
                 raise ValueError("dtype must be float32, float16 or bfloat16")
             dtype = getattr(torch, requested_dtype)
         placement: dict[str, Any] = {"device_map": str(device)}
-        memory = self.options.get("max_memory")
-        offload_dir = self.options.get("offload_dir")
+        if cuda_nf4:
+            from transformers import BitsAndBytesConfig
+            dtype = torch.float16
+            # A fixed device map deliberately rejects insufficient VRAM instead of
+            # silently spilling quantized modules onto CPU or disk.
+            placement = {
+                "device_map": {"": str(device)},
+                "quantization_config": BitsAndBytesConfig(
+                    load_in_4bit=True, bnb_4bit_quant_type="nf4",
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                ),
+            }
         if memory is not None or offload_dir is not None:
             # Explicit CPU/disk mode only: never choose a different accelerator or
             # silently retry an OOM. max_memory limits resident weights, NOT total
@@ -88,7 +110,6 @@ class HfBackend:
         processor = AutoProcessor.from_pretrained(
             str(path), local_files_only=True, trust_remote_code=False, use_fast=False,
         )
-        quantization = self.options.get("windows_int8", False)
         if quantization:
             if sys.platform != "win32" or device.type != "cpu" or memory is not None:
                 raise ValueError("windows_int8 requires Windows CPU without disk offload")
@@ -104,6 +125,14 @@ class HfBackend:
                 str(path), local_files_only=True, trust_remote_code=False,
                 dtype=dtype, attn_implementation="sdpa", **placement,
             )
+        if cuda_nf4:
+            if getattr(model, "is_loaded_in_4bit", False) is not True:
+                raise RuntimeError("cuda_nf4 model was not loaded in 4-bit mode")
+            for target in getattr(model, "hf_device_map", {}).values():
+                if isinstance(target, int) and not isinstance(target, bool) and target >= 0:
+                    continue
+                if str(target).split(":", 1)[0] != "cuda":
+                    raise RuntimeError("cuda_nf4 refuses CPU or disk model placement")
         model.eval()
         gc = model.generation_config
         gc.do_sample, gc.temperature, gc.top_p, gc.top_k = False, None, None, None
@@ -121,6 +150,8 @@ class HfBackend:
             "max_pixels": self.options.get("max_pixels") or getattr(ip, "max_pixels", None),
             "disk_offload": memory is not None,
             "windows_int8": bool(quantization),
+            "cuda_nf4": bool(cuda_nf4),
+            "quantization": "nf4-double" if cuda_nf4 else "cpu-int8" if quantization else None,
             "max_memory": dict(memory) if memory is not None else None,
         }
         self.loaded = True
