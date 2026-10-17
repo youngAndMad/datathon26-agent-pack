@@ -422,14 +422,14 @@ def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str],
             yes = list(range(1, n + 1))  # coarse proposal only; anchors come from verification
         yes_ids = [frames[i - 1].frame_id for i in yes]
         no_ids = [frames[i - 1].frame_id for i in no if i not in yes]
-        if said_no and not no_ids and not said_yes:
-            no_ids = [f.frame_id for f in frames]  # plain "no": false across the window
+        if said_no and not no_ids and not said_yes and not yes_without_frames_is_window:
+            no_ids = [f.frame_id for f in frames]  # verify: plain "no" = false across the window
         if yes_ids:
             ts_ = [frames[i - 1].relative_sec for i in yes]
             out.append(PredicateAssessment(predicate_id=pid, state="supported", supporting_frame_ids=yes_ids,
                                            contradicting_frame_ids=no_ids, interval_start_sec=min(ts_),
                                            interval_end_sec=max(ts_), visibility="clear", reasoning_note="yes"))
-        elif no_ids:
+        elif no_ids or (said_no and not said_yes):
             out.append(PredicateAssessment(predicate_id=pid, state="contradicted", contradicting_frame_ids=no_ids,
                                            visibility="clear", reasoning_note="no"))
         else:
