@@ -1,0 +1,28 @@
+{
+  "jobs": [
+    {
+      "job_id": "00000000-0000-4000-8000-000000000001",
+      "status": "done",
+      "received_at": "2026-10-17T09:57:00.000+00:00",
+      "finished_at": "2026-10-17T10:00:01.000+00:00",
+      "verdict": "violation",
+      "event_count": 2,
+      "reviewed_event_count": 1,
+      "review_required": true,
+      "mode": "test",
+      "error_code": null
+    },
+    {
+      "job_id": "00000000-0000-4000-8000-000000000002",
+      "status": "failed",
+      "received_at": "2026-10-17T09:40:00.000+00:00",
+      "finished_at": "2026-10-17T09:44:30.000+00:00",
+      "verdict": null,
+      "event_count": 0,
+      "reviewed_event_count": 0,
+      "review_required": false,
+      "mode": "test",
+      "error_code": "deadline_exceeded"
+    }
+  ]
+}

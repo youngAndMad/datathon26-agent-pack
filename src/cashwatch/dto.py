@@ -18,7 +18,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "g0-1.1.0"  # 1.1: AnalysisReport.coverage_notice_ru (R-A2)
+CONTRACT_VERSION = "g0-1.2.0"  # 1.1: coverage_notice_ru; 1.2: rule coverage, quality, reviews, history, export
 TIME_DECIMALS = 3
 
 
@@ -429,6 +429,28 @@ class ReportEvent(Strict):
     description_ru: Annotated[str, Field(min_length=1, max_length=2000)]  # == jury description
 
 
+class Interval(Strict):
+    start_sec: NonNegSec
+    end_sec: NonNegSec
+
+
+class RuleCoverage(Strict):
+    """Per approved rule: was it checkable on this clip? (observability, not a verdict)."""
+    rule_id: Id
+    type_ru: Annotated[str, Field(max_length=200)]
+    status: Literal["checked", "partially_checked", "not_checkable"]
+    unverifiable_intervals: list[Interval] = Field(default_factory=list)
+    note_ru: ShortText = ""
+
+
+class QualitySummary(Strict):
+    sampled_frames: Annotated[int, Field(ge=0)]
+    dark_frames: Annotated[int, Field(ge=0)]
+    low_detail_frames: Annotated[int, Field(ge=0)]  # near-uniform: overexposed/covered/blank
+    unusable_windows: Annotated[int, Field(ge=0)] = 0
+    notes_ru: list[ShortText] = Field(default_factory=list)
+
+
 class AnalysisReport(Strict):
     job_id: Id
     status: Literal["succeeded", "failed"]
@@ -442,6 +464,9 @@ class AnalysisReport(Strict):
     completed_stages: list[Stage]
     visual_limitations_ru: list[ShortText] = Field(default_factory=list)
     coverage_notice_ru: Annotated[str, Field(max_length=1000)] | None = None
+    rule_coverage: list[RuleCoverage] = Field(default_factory=list)
+    quality: QualitySummary | None = None
+    review_required: bool = False  # human should watch: visibility limits / unverified candidates
     events: list[ReportEvent] = Field(default_factory=list)
     review_notes: list[ReviewNote] = Field(default_factory=list)
     jury_result: JuryDoneResult | None = None
@@ -479,6 +504,48 @@ class UiEvent(Strict):
     limitations_ru: list[str]
 
 
+ReviewDecision = Literal["confirmed", "rejected", "needs_review", "missed"]
+
+
+class ReviewRequest(Strict):
+    """POST /api/v1/jobs/{job_id}/events/{event_id}/review. event_id "missed" reports a missed event
+    (corrected_timecode_sec required). Never modifies the stored jury result."""
+    decision: ReviewDecision
+    comment: Annotated[str, Field(max_length=1000)] = ""
+    corrected_type: Annotated[str, Field(max_length=200)] | None = None
+    corrected_timecode_sec: NonNegSec | None = None
+    reviewer: Annotated[str, Field(max_length=80)] = ""
+
+
+class EventReview(Strict):
+    review_id: Id
+    event_id: Id  # accepted event id, or "missed"
+    decision: ReviewDecision
+    comment: str = ""
+    corrected_type: str | None = None
+    corrected_timecode_sec: float | None = None
+    reviewer: str = ""
+    reviewed_at: str  # ISO-8601 UTC
+
+
+class JobSummary(Strict):
+    job_id: str
+    status: Literal["processing", "done", "failed"]
+    received_at: str
+    finished_at: str | None = None
+    verdict: Literal["no_violation", "violation"] | None = None
+    event_count: int = 0
+    reviewed_event_count: int = 0
+    review_required: bool = False
+    mode: RunMode = "production"
+    error_code: str | None = None
+
+
+class JobListResponse(Strict):
+    """GET /api/v1/jobs?limit=&status= (newest first)."""
+    jobs: list[JobSummary]
+
+
 class UiReport(Strict):
     """GET /api/v1/jobs/{job_id}/report — UI-only projection (never the jury object)."""
     job_id: str
@@ -491,4 +558,18 @@ class UiReport(Strict):
     coverage_notice_ru: str | None = None
     events: list[UiEvent] = Field(default_factory=list)
     media_available: bool = False
+    rule_coverage: list[RuleCoverage] = Field(default_factory=list)
+    quality_notes_ru: list[str] = Field(default_factory=list)
+    review_required: bool = False
+    reviews: list[EventReview] = Field(default_factory=list)
     error: ErrorInfo | None = None
+
+
+class ExportBundle(Strict):
+    """GET /api/v1/jobs/{job_id}/export — reviewer report download (private data)."""
+    job_id: str
+    exported_at: str
+    report: UiReport
+    versions: RunVersions | None = None
+    coverage: Coverage | None = None
+    original_jury_result: JuryDoneResult | None = None  # system output, unchanged by reviews

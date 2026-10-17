@@ -9,5 +9,9 @@
   "coverage_notice_ru": "В пределах видимых действий и проверяемых правил",
   "events": [],
   "media_available": true,
+  "rule_coverage": [],
+  "quality_notes_ru": [],
+  "review_required": false,
+  "reviews": [],
   "error": null
 }
