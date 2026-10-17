@@ -1,0 +1,13 @@
+{
+  "job_id": "00000000-0000-4000-8000-000000000001",
+  "status": "done",
+  "stage": "complete",
+  "elapsed_sec": 150.0,
+  "progress": null,
+  "mode": "test",
+  "verdict": "no_violation",
+  "coverage_notice_ru": "В пределах видимых действий и проверяемых правил",
+  "events": [],
+  "media_available": true,
+  "error": null
+}

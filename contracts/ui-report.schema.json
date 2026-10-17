@@ -1,0 +1,313 @@
+{
+  "$defs": {
+    "ErrorInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_media",
+            "unsupported_container",
+            "limits_exceeded",
+            "timeline_unsupported",
+            "decode_failed",
+            "model_unavailable",
+            "model_output_invalid",
+            "gpu_oom",
+            "storage_full",
+            "worker_lost",
+            "deadline_exceeded",
+            "evidence_invalid",
+            "rule_registry_invalid",
+            "input_unusable",
+            "internal_error"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ErrorInfo",
+      "type": "object"
+    },
+    "StageProgress": {
+      "additionalProperties": false,
+      "properties": {
+        "completed": {
+          "minimum": 0,
+          "title": "Completed",
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "unit": {
+          "enum": [
+            "windows",
+            "candidates",
+            "events",
+            "steps"
+          ],
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "completed",
+        "total",
+        "unit"
+      ],
+      "title": "StageProgress",
+      "type": "object"
+    },
+    "UiEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "timecode_sec": {
+          "title": "Timecode Sec",
+          "type": "number"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/UiEvidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/UiSource"
+        },
+        "interval": {
+          "$ref": "#/$defs/UiInterval"
+        },
+        "limitations_ru": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations Ru",
+          "type": "array"
+        }
+      },
+      "required": [
+        "event_id",
+        "type",
+        "timecode_sec",
+        "description",
+        "evidence",
+        "source",
+        "interval",
+        "limitations_ru"
+      ],
+      "title": "UiEvent",
+      "type": "object"
+    },
+    "UiEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "timestamp_sec": {
+          "title": "Timestamp Sec",
+          "type": "number"
+        },
+        "image_url": {
+          "title": "Image Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "timestamp_sec",
+        "image_url"
+      ],
+      "title": "UiEvidence",
+      "type": "object"
+    },
+    "UiInterval": {
+      "additionalProperties": false,
+      "properties": {
+        "start_sec": {
+          "title": "Start Sec",
+          "type": "number"
+        },
+        "end_sec": {
+          "title": "End Sec",
+          "type": "number"
+        }
+      },
+      "required": [
+        "start_sec",
+        "end_sec"
+      ],
+      "title": "UiInterval",
+      "type": "object"
+    },
+    "UiSource": {
+      "additionalProperties": false,
+      "properties": {
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "document_title": {
+          "title": "Document Title",
+          "type": "string"
+        },
+        "clause": {
+          "title": "Clause",
+          "type": "string"
+        },
+        "official_url": {
+          "title": "Official Url",
+          "type": "string"
+        },
+        "local_excerpt": {
+          "title": "Local Excerpt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "document_title",
+        "clause",
+        "official_url",
+        "local_excerpt"
+      ],
+      "title": "UiSource",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "GET /api/v1/jobs/{job_id}/report — UI-only projection (never the jury object).",
+  "properties": {
+    "job_id": {
+      "title": "Job Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "processing",
+        "done",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "receiving",
+        "probing",
+        "sampling",
+        "observing",
+        "verifying",
+        "rendering_evidence",
+        "committing",
+        "complete"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "elapsed_sec": {
+      "title": "Elapsed Sec",
+      "type": "number"
+    },
+    "progress": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StageProgress"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "mode": {
+      "default": "production",
+      "enum": [
+        "production",
+        "test"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "verdict": {
+      "anyOf": [
+        {
+          "enum": [
+            "no_violation",
+            "violation"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verdict"
+    },
+    "coverage_notice_ru": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Coverage Notice Ru"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/UiEvent"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "media_available": {
+      "default": false,
+      "title": "Media Available",
+      "type": "boolean"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ErrorInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "job_id",
+    "status",
+    "stage",
+    "elapsed_sec"
+  ],
+  "title": "UiReport",
+  "type": "object"
+}

@@ -1,0 +1,24 @@
+# private / restricted data: never commit
+data/
+models/*
+!models/manifest.json
+!models/README.md
+*.mov
+*.MOV
+*.mp4
+secrets/
+.env
+# build/runtime
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+frontend/node_modules/
+frontend/dist/
+dist/
+build/
+*.egg-info/
+evaluation/annotations/private/
+evaluation/manifest/private/
+evaluation/reports/private/
+tests/fixtures/generated/

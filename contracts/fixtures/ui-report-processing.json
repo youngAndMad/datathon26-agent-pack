@@ -1,0 +1,17 @@
+{
+  "job_id": "00000000-0000-4000-8000-000000000001",
+  "status": "processing",
+  "stage": "observing",
+  "elapsed_sec": 42.5,
+  "progress": {
+    "completed": 5,
+    "total": 16,
+    "unit": "windows"
+  },
+  "mode": "test",
+  "verdict": null,
+  "coverage_notice_ru": null,
+  "events": [],
+  "media_available": false,
+  "error": null
+}

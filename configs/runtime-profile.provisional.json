@@ -1,0 +1,55 @@
+{
+  "profile_id": "provisional-qwen3vl4b-v1",
+  "status": "benchmark_required",
+  "production_enabled": false,
+  "model": {
+    "repository": "Qwen/Qwen3-VL-4B-Instruct",
+    "revision": null,
+    "local_path": "/models/qwen3-vl-4b-instruct",
+    "backend": "transformers",
+    "local_files_only": true,
+    "trust_remote_code": false,
+    "allow_cloud_fallback": false
+  },
+  "sampling": {
+    "window_sec": 12,
+    "overlap_sec": 3,
+    "uniform_fps": 1,
+    "max_frames_per_observation": 16,
+    "model_long_side_px": 640,
+    "motion_proposal_fps": 4,
+    "refinement_radius_sec": 3,
+    "refinement_fps": 4,
+    "max_refinement_frames": 24,
+    "max_visual_tokens": null,
+    "max_new_tokens": 512,
+    "preserve_actual_timestamps": true
+  },
+  "runtime": {
+    "active_jobs_per_gpu": 1,
+    "max_queue_length": 0,
+    "max_file_bytes": 268435456,
+    "max_duration_sec": 300,
+    "max_pixel_area": 8294400,
+    "planned_total_deadline_sec": 300,
+    "internal_terminal_target_sec": 270,
+    "retention_hours_if_permitted": 24,
+    "require_approved_rules": true,
+    "mock_mode": false
+  },
+  "offline": {
+    "HF_HUB_OFFLINE": "1",
+    "HF_HUB_DISABLE_TELEMETRY": "1",
+    "network_egress_policy": "deny",
+    "remote_asset_urls": false
+  },
+  "must_resolve_before_production": [
+    "pinned model revision and hashes",
+    "tested package versions and lockfile",
+    "actual visual token budget",
+    "measured complete-clip latency",
+    "approved rule registry",
+    "organizer retention allowance",
+    "concurrency and public routing"
+  ]
+}
