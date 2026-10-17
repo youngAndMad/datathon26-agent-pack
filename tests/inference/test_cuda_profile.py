@@ -6,9 +6,11 @@ import unittest
 from unittest.mock import patch
 
 from cashwatch.errors import PipelineError
+import cashwatch.inference.supervisor  # noqa: F401  (patched by attribute path; not auto-imported on macOS)
 from cashwatch.inference import create_perception
 
 
+@unittest.skipIf(os.name != "nt", "patches os.name globally; pathlib breaks off Windows")
 class CudaProfileTests(unittest.TestCase):
     def setUp(self):
         self.settings = SimpleNamespace(backend="transformers", mode="test", device="cuda",
