@@ -1,0 +1,76 @@
+captured_by: LEGAL2 via cashwatch.rules.capture.fetch (same endpoint/derivation)
+retrieval_date: '2026-10-17'
+authority_note: adilet.zan.kz only; retrieval date is not an effective date; supplements manifest.yaml (not edited)
+files:
+- source_id: L06
+  file: L06-2026-10-17.txt
+  derived_from: L06-2026-10-17.api.json
+  derivation: cashwatch.rules.sources.html_to_text(document.text_content)
+  bytes: 128264
+  sha256: 2cd78ff2994401780908548e7c96ff304bb80a75deb98460c2a65d3c28dbc209
+  kind: derived_text
+- source_id: L06
+  url: https://adilet.zan.kz/api/documents/by-ngr/V2400034348?language=rus
+  canonical_url: https://adilet.zan.kz/rus/docs/V2400034348
+  retrieved_at: '2026-10-17T12:34:25Z'
+  http_status: 200
+  error: null
+  file: L06-2026-10-17.api.json
+  bytes: 160896
+  sha256: 46ee91f7fb9a451979ca376f03c1f11f05ec008c7652242f888bed6b0b16b055
+  kind: official_api_json
+- source_id: L07
+  file: L07-2026-10-17.txt
+  derived_from: L07-2026-10-17.api.json
+  derivation: cashwatch.rules.sources.html_to_text(document.text_content)
+  bytes: 18620
+  sha256: 79b6a4fb2e70b8a3a25713add0541f4002f1ab8b92914e84769b6c02e6491d37
+  kind: derived_text
+- source_id: L07
+  url: https://adilet.zan.kz/api/documents/by-ngr/V2400035552?language=rus
+  canonical_url: https://adilet.zan.kz/rus/docs/V2400035552
+  retrieved_at: '2026-10-17T12:34:25Z'
+  http_status: 200
+  error: null
+  file: L07-2026-10-17.api.json
+  bytes: 28994
+  sha256: 184e4bbbe3b5e5622ce77c35d624bc6d88952140b2c4ae487939f0271bc73e28
+  kind: official_api_json
+documents:
+  L06:
+    official_name: Постановление Правления Агентства Республики Казахстан по регулированию и развитию финансового рынка от 30 апреля 2024 года № 21. Зарегистрировано в Министерстве юстиции Республики Казахстан 6 мая 2024 года № 34348
+    title_ru: Об утверждении Инструкции по организации антитеррористической защиты расчетно-кассовых отделений банков второго уровня, уязвимых в террористическом отношении
+    status: new
+    is_actual: true
+    adoption_number: '21'
+    adoption_date: '2024-05-05T18:00:00.000Z'
+    justice_reg_number: '34348'
+    justice_reg_date: '2024-05-05T18:00:00.000Z'
+    publication_reference: Эталонный контрольный банк НПА РК в электронном виде, 14.05.2024
+    publication_date: '2024-05-09T18:00:00.000Z'
+    start_date: '2024-04-29T18:00:00.000Z'
+    end_date: '2024-04-29T18:00:00.000Z'
+    updated_at: '2026-08-27T12:04:10.808Z'
+    group_number: V2400034348
+    developer_organ_names_ru:
+    - Агентство Республики Казахстан по регулированию и развитию финансового рынка (Образован Указом Президента РК от 11.11.2019 г. № 203)
+    has_operative_text: true
+  L07:
+    official_name: Постановление Правления Национального Банка Республики Казахстан от 24 декабря 2024 года № 88. Зарегистрировано в Министерстве юстиции Республики Казахстан 27 декабря 2024 года № 35552.
+    title_ru: О внесении изменений в постановление Правления Национального Банка Республики Казахстан от 24 февраля 2020 года № 14 "Об утверждении Правил организации охраны и устройства помещений банков второго уровня, филиалов банков-нерезидентов Республики Казахстан, Национального оператора почты, юридических лиц, исключительной деятельностью которых является инкассация банкнот, монет и ценностей, и юридических лиц, осуществляющих деятельность исключительно через обменные пункты на основании лицензии Национального Банка Республики Казахстан на обменные операции с наличной иностранной валютой"
+    status: new
+    is_actual: true
+    adoption_number: '88'
+    adoption_date: '2024-12-26T18:00:00.000Z'
+    justice_reg_number: '35552'
+    justice_reg_date: '2024-12-26T18:00:00.000Z'
+    publication_reference: Эталонный контрольный банк НПА РК в электронном виде, 05.01.2025
+    publication_date: '2024-12-29T18:00:00.000Z'
+    start_date: '2024-12-23T18:00:00.000Z'
+    end_date: '2024-12-23T18:00:00.000Z'
+    updated_at: '2026-08-27T12:06:49.441Z'
+    group_number: V2400035552
+    developer_organ_names_ru:
+    - Национальный Банк Республики Казахстан
+    has_operative_text: true
+excerpts_file: excerpts.extra.yaml
