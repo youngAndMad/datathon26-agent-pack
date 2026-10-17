@@ -1,0 +1,66 @@
+{
+  "job_id": "00000000-0000-4000-8000-000000000001",
+  "status": "done",
+  "stage": "complete",
+  "elapsed_sec": 181.2,
+  "progress": null,
+  "mode": "test",
+  "verdict": "violation",
+  "coverage_notice_ru": "В пределах видимых действий и проверяемых правил",
+  "events": [
+    {
+      "event_id": "e1",
+      "type": "Тестовый тип FIXTURE-A",
+      "timecode_sec": 12.345,
+      "description": "[ТЕСТОВЫЕ ДАННЫЕ] На 12.345 с видно: синтетический объект. Требует проверки сотрудником. Источник: FIXTURE, не является нормой права.",
+      "evidence": [
+        {
+          "timestamp_sec": 12.345,
+          "image_url": "/api/v1/jobs/00000000-0000-4000-8000-000000000001/evidence/e1-0.jpg"
+        }
+      ],
+      "source": {
+        "rule_id": "FIXTURE-A",
+        "document_title": "FIXTURE — не является нормой права",
+        "clause": "0",
+        "official_url": "https://adilet.zan.kz/rus/docs/FIXTURE",
+        "local_excerpt": "Синтетический фрагмент для проверки интерфейса."
+      },
+      "interval": {
+        "start_sec": 10.345,
+        "end_sec": 15.345
+      },
+      "limitations_ru": [
+        "Синтетические данные для теста интерфейса"
+      ]
+    },
+    {
+      "event_id": "e2",
+      "type": "Тестовый тип FIXTURE-B",
+      "timecode_sec": 47.0,
+      "description": "[ТЕСТОВЫЕ ДАННЫЕ] На 47.000 с видно: синтетический объект. Требует проверки сотрудником. Источник: FIXTURE, не является нормой права.",
+      "evidence": [
+        {
+          "timestamp_sec": 47.0,
+          "image_url": "/api/v1/jobs/00000000-0000-4000-8000-000000000001/evidence/e2-0.jpg"
+        }
+      ],
+      "source": {
+        "rule_id": "FIXTURE-B",
+        "document_title": "FIXTURE — не является нормой права",
+        "clause": "0",
+        "official_url": "https://adilet.zan.kz/rus/docs/FIXTURE",
+        "local_excerpt": "Синтетический фрагмент для проверки интерфейса."
+      },
+      "interval": {
+        "start_sec": 45.0,
+        "end_sec": 50.0
+      },
+      "limitations_ru": [
+        "Синтетические данные для теста интерфейса"
+      ]
+    }
+  ],
+  "media_available": true,
+  "error": null
+}

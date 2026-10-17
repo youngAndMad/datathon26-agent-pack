@@ -1,0 +1,16 @@
+{
+  "job_id": "00000000-0000-4000-8000-000000000001",
+  "status": "failed",
+  "stage": "observing",
+  "elapsed_sec": 270.0,
+  "progress": null,
+  "mode": "test",
+  "verdict": null,
+  "coverage_notice_ru": null,
+  "events": [],
+  "media_available": false,
+  "error": {
+    "code": "deadline_exceeded",
+    "message": "Анализ не уложился в отведённое время"
+  }
+}
