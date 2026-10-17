@@ -58,7 +58,66 @@ export interface UiReport {
   coverage_notice_ru?: string | null;
   events?: UiEvent[];
   media_available?: boolean;
+  rule_coverage?: RuleCoverage[];
+  quality_notes_ru?: string[];
+  review_required?: boolean;
+  reviews?: EventReview[];
   error?: ErrorInfo | null;
+}
+
+// ---- g0-1.2.0: observability, reviewer decisions, history, export
+
+export interface TimeInterval {
+  start_sec: number;
+  end_sec: number;
+}
+
+export type RuleCoverageStatus = "checked" | "partially_checked" | "not_checkable";
+
+export interface RuleCoverage {
+  rule_id: string;
+  type_ru: string;
+  status: RuleCoverageStatus;
+  unverifiable_intervals?: TimeInterval[];
+  note_ru?: string;
+}
+
+export type ReviewDecision = "confirmed" | "rejected" | "needs_review" | "missed";
+
+export interface ReviewRequest {
+  decision: ReviewDecision;
+  comment: string;
+  corrected_type?: string | null;
+  corrected_timecode_sec?: number | null;
+  reviewer: string;
+}
+
+export interface EventReview {
+  review_id: string;
+  event_id: string;
+  decision: ReviewDecision;
+  comment?: string;
+  corrected_type?: string | null;
+  corrected_timecode_sec?: number | null;
+  reviewer?: string;
+  reviewed_at: string;
+}
+
+export interface JobSummary {
+  job_id: string;
+  status: "processing" | "done" | "failed";
+  received_at: string;
+  finished_at?: string | null;
+  verdict?: Verdict | null;
+  event_count?: number;
+  reviewed_event_count?: number;
+  review_required?: boolean;
+  mode?: "production" | "test";
+  error_code?: string | null;
+}
+
+export interface JobListResponse {
+  jobs: JobSummary[];
 }
 
 export interface JuryEvidenceFrame {

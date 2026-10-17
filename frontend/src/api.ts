@@ -2,7 +2,7 @@
 // request and is never stored by this module.
 
 import { ERROR_MESSAGES_RU } from "./messages";
-import type { JobResponse, UiReport } from "./types";
+import type { EventReview, JobListResponse, JobResponse, ReviewRequest, UiReport } from "./types";
 
 export type ApiErrorKind = "http" | "network" | "aborted" | "protocol";
 
@@ -102,18 +102,26 @@ function httpError(status: number, bodyText: string, retryAfterHeader: string | 
 
 /** Only same-origin API paths may receive the access key. */
 export function isApiPath(url: string): boolean {
-  return /^\/api\/v1\/[A-Za-z0-9._~\-/]+$/.test(url) && !url.includes("..");
+  return /^\/api\/v1\/[A-Za-z0-9._~\-/]+(\?[A-Za-z0-9_.\-=&]*)?$/.test(url) && !url.includes("..");
 }
 
-async function authorizedFetch(path: string, key: string, signal?: AbortSignal): Promise<Response> {
+interface FetchOpts {
+  method?: "GET" | "POST";
+  json?: unknown;
+}
+
+async function authorizedFetch(path: string, key: string, signal?: AbortSignal, opts: FetchOpts = {}): Promise<Response> {
   if (!isApiPath(path)) {
     throw new ApiError("protocol", "Недопустимый адрес ресурса.");
   }
+  const headers: Record<string, string> = { "X-API-Key": key };
+  if (opts.json !== undefined) headers["Content-Type"] = "application/json";
   let res: Response;
   try {
     res = await fetch(path, {
-      method: "GET",
-      headers: { "X-API-Key": key },
+      method: opts.method ?? "GET",
+      headers,
+      body: opts.json !== undefined ? JSON.stringify(opts.json) : undefined,
       credentials: "same-origin",
       cache: "no-store",
       signal,
@@ -129,8 +137,8 @@ async function authorizedFetch(path: string, key: string, signal?: AbortSignal):
   return res;
 }
 
-async function getJson<T>(path: string, key: string, signal?: AbortSignal): Promise<T> {
-  const res = await authorizedFetch(path, key, signal);
+async function getJson<T>(path: string, key: string, signal?: AbortSignal, opts?: FetchOpts): Promise<T> {
+  const res = await authorizedFetch(path, key, signal, opts);
   try {
     return (await res.json()) as T;
   } catch {
@@ -160,6 +168,89 @@ export function mediaPath(jobId: string): string {
 export async function fetchBlob(path: string, key: string, signal?: AbortSignal): Promise<Blob> {
   const res = await authorizedFetch(path, key, signal);
   return res.blob();
+}
+
+// ------------------------------------------------------------ reviews / history / export
+
+/** Event id used by the backend for "missed event" reports. */
+export const MISSED_EVENT_ID = "missed";
+
+/**
+ * POST a human reviewer decision. It is stored separately by the server and
+ * never changes the system (jury) result.
+ */
+export async function postReview(
+  jobId: string,
+  eventId: string,
+  body: ReviewRequest,
+  key: string,
+  signal?: AbortSignal,
+): Promise<EventReview> {
+  try {
+    const r = await getJson<EventReview>(
+      `${jobPath(jobId)}/events/${encodeURIComponent(eventId)}/review`,
+      key,
+      signal,
+      { method: "POST", json: body },
+    );
+    if (!r || typeof r !== "object" || typeof r.review_id !== "string" || typeof r.decision !== "string") {
+      throw new ApiError("protocol", "Сервер вернул некорректный ответ на сохранение решения.");
+    }
+    return r;
+  } catch (e) {
+    if (e instanceof ApiError && e.kind === "http") {
+      if (e.status === 409) throw new ApiError("http", "Задание ещё не завершено — решение нельзя сохранить.", { status: 409 });
+      if (e.status === 404) throw new ApiError("http", "Событие не найдено на сервере.", { status: 404 });
+      if (e.status === 422 || e.status === 400) {
+        throw new ApiError("http", "Сервер не принял решение: проверьте поля формы.", { status: e.status });
+      }
+    }
+    throw e;
+  }
+}
+
+export function getReviews(jobId: string, key: string, signal?: AbortSignal): Promise<EventReview[]> {
+  return getJson<EventReview[]>(`${jobPath(jobId)}/reviews`, key, signal);
+}
+
+export async function listJobs(
+  key: string,
+  opts: { limit?: number; status?: string } = {},
+  signal?: AbortSignal,
+): Promise<JobListResponse> {
+  const q = new URLSearchParams({ limit: String(opts.limit ?? 50) });
+  if (opts.status) q.set("status", opts.status);
+  const body = await getJson<JobListResponse>(`/api/v1/jobs?${q.toString()}`, key, signal);
+  if (!body || !Array.isArray(body.jobs)) throw new ApiError("protocol", "Сервер вернул некорректный список заданий.");
+  return body;
+}
+
+/** Filename from Content-Disposition (RFC 6266 filename* preferred), sanitized. */
+export function filenameFromDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  let name: string | null = null;
+  const star = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(header);
+  if (star) {
+    try {
+      name = decodeURIComponent(star[1].trim().replace(/^"|"$/g, ""));
+    } catch {
+      name = null;
+    }
+  }
+  if (!name) {
+    const plain = /filename\s*=\s*("([^"]*)"|[^;]+)/.exec(header);
+    if (plain) name = (plain[2] ?? plain[1]).trim();
+  }
+  if (!name) return fallback;
+  const safe = name.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/^\.+/, "").slice(0, 120);
+  return safe || fallback;
+}
+
+export async function fetchExport(jobId: string, key: string, signal?: AbortSignal): Promise<{ blob: Blob; filename: string }> {
+  const res = await authorizedFetch(`${jobPath(jobId)}/export`, key, signal);
+  const blob = await res.blob();
+  const fallback = `cashwatch-${jobId.replace(/[^A-Za-z0-9._-]/g, "_")}.json`;
+  return { blob, filename: filenameFromDisposition(res.headers.get("Content-Disposition"), fallback) };
 }
 
 export interface UploadHandle {
