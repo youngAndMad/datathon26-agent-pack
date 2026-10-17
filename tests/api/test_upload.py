@@ -114,16 +114,74 @@ def test_503_when_worker_not_ready(make_env, mov_bytes):
     assert env.upload(mov_bytes).status_code == 503
 
 
-def test_t18_capacity_429_with_retry_after(env, mov_bytes):
-    assert env.upload(mov_bytes).status_code == 202
-    r = env.upload(mov_bytes)
+def _assert_429(r):
     assert r.status_code == 429 and r.json()["error"]["code"] == "capacity_exceeded"
     assert 1 <= int(r.headers["Retry-After"]) <= 300
+
+
+def test_t18_capacity_429_with_retry_after_queue0(make_env, mov_bytes):
+    env = make_env(active_jobs=1, max_queue_length=0)
+    env.ready()
+    assert env.upload(mov_bytes).status_code == 202
+    _assert_429(env.upload(mov_bytes))
     _no_leftovers(env)
     assert env.store.counts() == {"queued": 1}
     # repeated polling during a full queue stays cheap and stable
     for _ in range(20):
         assert env.client.get(f"/api/v1/jobs/{uuid.uuid4()}", headers=env.h).status_code == 404
+
+
+def test_t18_capacity_queue1_second_queued_third_429(make_env, mov_bytes):
+    env = make_env(active_jobs=1, max_queue_length=1)
+    env.ready()
+    a = env.upload(mov_bytes)
+    assert a.status_code == 202
+    assert env.store.claim_job("w").job.job_id == a.json()["job_id"]  # first one running
+    b = env.upload(mov_bytes)
+    assert b.status_code == 202  # admitted to the single queue slot
+    _assert_429(env.upload(mov_bytes))
+    _no_leftovers(env)
+    assert env.store.counts() == {"running": 1, "queued": 1}
+    assert env.client.get(f"/api/v1/jobs/{b.json()['job_id']}", headers=env.h).json()["status"] == "processing"
+
+
+def test_t18_queued_job_keeps_original_deadline(make_env, mov_bytes):
+    """A queued job claimed later keeps deadline_at = trusted request start + internal_terminal_sec,
+    and is failed deadline_exceeded instead of claimed once that has passed."""
+    from jobfakes import later, write_fake_result
+
+    from cashwatch.deadline import parse_utc
+    from cashwatch.errors import public_error
+
+    env = make_env(active_jobs=1, max_queue_length=1)
+    env.ready()
+    a = env.upload(mov_bytes).json()["job_id"]
+    b = env.upload(mov_bytes).json()["job_id"]
+    ca = env.store.claim_job("w")
+    assert ca.job.job_id == a
+    vb = env.store.get_job(b)
+    delta = (parse_utc(vb.deadline_at) - parse_utc(vb.received_at)).total_seconds()
+    assert delta == env.settings.internal_terminal_sec
+    # A finishes; B claimed "later" (still in time) keeps its original deadline
+    assert env.store.commit_result(a, 1, write_fake_result(env.store, ca))
+    cb = env.store.claim_job("w", now_utc=later(100))
+    assert cb.job.job_id == b and cb.job.deadline_at == vb.deadline_at
+    assert cb.job.request_started_at == vb.received_at
+
+    # Second scenario: the queued job's original deadline passes while waiting -> failed, not claimed
+    env2 = make_env(active_jobs=1, max_queue_length=1)
+    env2.ready()
+    x = env2.upload(mov_bytes).json()["job_id"]
+    y = env2.upload(mov_bytes).json()["job_id"]
+    cx = env2.store.claim_job("w")
+    assert cx.job.job_id == x
+    env2.store.fail_job(x, 1, public_error("decode_failed"))
+    deadline_y = env2.store.get_job(y).deadline_at
+    assert env2.store.claim_job("w", now_utc=later(env2.settings.internal_terminal_sec + 1)) is None
+    vy = env2.store.get_job(y)
+    assert vy.state == "failed" and vy.error_code == "deadline_exceeded" and vy.deadline_at == deadline_y
+    body = env2.client.get(f"/api/v1/jobs/{y}", headers=env2.h).json()
+    assert body["status"] == "failed" and body["error"]["code"] == "deadline_exceeded"
 
 
 def test_t18_concurrent_burst_bounded(make_env, mov_bytes):
@@ -162,7 +220,9 @@ def test_t27_idempotency_same_and_different(make_env, mov_bytes):
     _no_leftovers(env)
 
 
-def test_t27_idempotent_replay_bypasses_full_capacity(env, mov_bytes):
+def test_t27_idempotent_replay_bypasses_full_capacity(make_env, mov_bytes):
+    env = make_env(active_jobs=1, max_queue_length=0)
+    env.ready()
     k = {"Idempotency-Key": "k1"}
     a = env.upload(mov_bytes, headers=k)
     assert env.upload(mov_bytes).status_code == 429  # capacity is full now

@@ -22,8 +22,8 @@ def test_migrations_wal_and_idempotent_reopen(settings):
     s2 = create_store(settings)  # second open must not re-apply
     conn = sqlite3.connect(s1.db_path)
     assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
-    assert [r[0] for r in conn.execute("SELECT version FROM schema_migrations")] == [1]
-    assert s2.schema_version == 1
+    assert [r[0] for r in conn.execute("SELECT version FROM schema_migrations")] == [1, 2]
+    assert s2.schema_version == 2
 
 
 def test_claim_builds_job_input_and_bumps_generation(store):

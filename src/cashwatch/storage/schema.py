@@ -71,6 +71,33 @@ MIGRATIONS: list[tuple[int, str]] = [
         );
         """,
     ),
+    (
+        2,
+        # Reviewer decisions (append-only, never touch stored results) + cached history summary.
+        # summary_cached=0 marks rows committed before migration 2 (lazily backfilled on list).
+        """
+        CREATE TABLE reviews (
+            seq                     INTEGER PRIMARY KEY AUTOINCREMENT,
+            review_id               TEXT NOT NULL UNIQUE,
+            job_id                  TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+            event_id                TEXT NOT NULL,
+            decision                TEXT NOT NULL CHECK (decision IN
+                                      ('confirmed','rejected','needs_review','missed')),
+            comment                 TEXT NOT NULL DEFAULT '',
+            corrected_type          TEXT,
+            corrected_timecode_sec  REAL,
+            reviewer                TEXT NOT NULL DEFAULT '',
+            reviewed_at             TEXT NOT NULL
+        );
+        CREATE INDEX reviews_job ON reviews(job_id, seq);
+        ALTER TABLE jobs ADD COLUMN verdict TEXT;
+        ALTER TABLE jobs ADD COLUMN event_count INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE jobs ADD COLUMN review_required INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE jobs ADD COLUMN mode TEXT;
+        ALTER TABLE jobs ADD COLUMN summary_cached INTEGER NOT NULL DEFAULT 0;
+        CREATE INDEX jobs_received ON jobs(received_at)
+        """,
+    ),
 ]
 
 

@@ -18,6 +18,7 @@ from pathlib import Path
 
 import anyio
 from fastapi import FastAPI, Request
+from pydantic import ValidationError
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
@@ -26,9 +27,18 @@ from cashwatch.api.errors import ApiError, error_response
 from cashwatch.api.ingress import PRINCIPAL_ID, IngressMiddleware, is_api_path
 from cashwatch.api.projection import build_ui_report
 from cashwatch.api.upload import MULTIPART_OVERHEAD_BYTES, receive_file, sniff_container
-from cashwatch.deadline import utc_now
+from cashwatch.deadline import iso_utc, utc_now
+from cashwatch.dto import ExportBundle, JobListResponse, JuryDoneResult, ReviewRequest
 from cashwatch.settings import Settings
-from cashwatch.storage import CapacityFull, IdempotencyConflict, JobStore, JobView, create_store
+from cashwatch.storage import (
+    MISSED_EVENT_ID,
+    CapacityFull,
+    IdempotencyConflict,
+    JobNotDone,
+    JobStore,
+    JobView,
+    create_store,
+)
 
 log = logging.getLogger("cashwatch.api")
 
@@ -36,6 +46,10 @@ SWEEP_INTERVAL_SEC = 5.0
 MEDIA_CHUNK = 256 * 1024
 _RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 _IDEM_RE = re.compile(r"^[\x21-\x7e]{1,200}$")
+REVIEW_BODY_MAX_BYTES = 16 * 1024
+LIST_DEFAULT_LIMIT = 50
+LIST_MAX_LIMIT = 200
+LIST_STATUSES = ("processing", "done", "failed")
 
 
 def _rid(request: Request) -> str:
@@ -194,6 +208,22 @@ def create_app(settings: Settings, store: JobStore | None = None, *,
             raise ApiError(410, "expired")
         return view
 
+    @app.get("/api/v1/jobs")
+    def list_jobs(request: Request):
+        q = request.query_params
+        limit = LIST_DEFAULT_LIMIT
+        raw_limit = q.get("limit")
+        if raw_limit is not None:
+            if not raw_limit.isdigit() or not 1 <= int(raw_limit) <= LIST_MAX_LIMIT:
+                raise ApiError(422, "invalid_request")
+            limit = int(raw_limit)
+        status = q.get("status") or None
+        if status is not None and status not in LIST_STATUSES:
+            raise ApiError(422, "invalid_request")
+        principal = getattr(request.state, "principal_id", PRINCIPAL_ID)
+        jobs = store.list_jobs(principal, limit=limit, status=status)
+        return JSONResponse(JobListResponse(jobs=jobs).model_dump(mode="json"))
+
     @app.get("/api/v1/jobs/{job_id}")
     def get_job(job_id: str):
         view = _view(job_id)
@@ -206,13 +236,85 @@ def create_app(settings: Settings, store: JobStore | None = None, *,
             return JSONResponse({"job_id": view.id, "status": "failed", "error": view.error().model_dump()})
         return JSONResponse({"job_id": view.id, "status": "processing"})
 
+    def _ui_report(view: JobView):
+        report = store.read_report(view) if view.state == "succeeded" else None
+        reviews = store.list_reviews(view.id) if view.state == "succeeded" else []
+        ui = build_ui_report(view, report, now=utc_now(), default_mode=settings.mode,
+                             media_available=store.media_file(view) is not None, reviews=reviews)
+        return ui, report
+
     @app.get("/api/v1/jobs/{job_id}/report")
     def get_report(job_id: str):
-        view = _view(job_id)
-        report = store.read_report(view) if view.state == "succeeded" else None
-        ui = build_ui_report(view, report, now=utc_now(), default_mode=settings.mode,
-                             media_available=store.media_file(view) is not None)
+        ui, _ = _ui_report(_view(job_id))
         return JSONResponse(ui.model_dump(mode="json"))
+
+    # ------------------------------------------------------------------ reviewer decisions / export
+
+    async def _read_small_body(request: Request, cap: int) -> bytes:
+        cl = request.headers.get("content-length")
+        if cl is not None:
+            if not cl.strip().isdigit():
+                raise ApiError(400, "invalid_request")
+            if int(cl) > cap:
+                raise ApiError(413, "payload_too_large")
+        buf = bytearray()
+        async for chunk in request.stream():
+            buf.extend(chunk)
+            if len(buf) > cap:
+                raise ApiError(413, "payload_too_large")
+        return bytes(buf)
+
+    @app.post("/api/v1/jobs/{job_id}/events/{event_id}/review", status_code=201)
+    async def post_review(job_id: str, event_id: str, request: Request):
+        view = await anyio.to_thread.run_sync(_view, job_id)
+        if view.state != "succeeded":
+            raise ApiError(409, "job_not_done")
+        report = await anyio.to_thread.run_sync(store.read_report, view)
+        if report is None:
+            raise ApiError(500, "internal_error")
+        known = {e.event.event_id for e in report.events}
+        if event_id != MISSED_EVENT_ID and event_id not in known:
+            raise ApiError(404, "not_found")
+        body = await _read_small_body(request, REVIEW_BODY_MAX_BYTES)
+        try:
+            req = ReviewRequest.model_validate_json(body)
+        except ValidationError:
+            raise ApiError(422, "invalid_request") from None
+        missed = event_id == MISSED_EVENT_ID
+        if (req.decision == "missed") != missed:
+            raise ApiError(422, "invalid_review")
+        if missed and req.corrected_timecode_sec is None:
+            raise ApiError(422, "invalid_review")
+        if req.corrected_timecode_sec is not None:
+            duration = report.source.duration_sec if report.source is not None else None
+            if duration is None or req.corrected_timecode_sec > duration:
+                raise ApiError(422, "invalid_review")
+        try:
+            review = await anyio.to_thread.run_sync(store.add_review, view.id, event_id, req)
+        except JobNotDone:
+            raise ApiError(409, "job_not_done") from None
+        log.info("request_id=%s review job_id=%s decision=%s", _rid(request), view.id, review.decision)
+        return JSONResponse(review.model_dump(mode="json"), status_code=201)
+
+    @app.get("/api/v1/jobs/{job_id}/reviews")
+    def get_reviews(job_id: str):
+        view = _view(job_id)
+        return JSONResponse([r.model_dump(mode="json") for r in store.list_reviews(view.id)])
+
+    @app.get("/api/v1/jobs/{job_id}/export")
+    def get_export(job_id: str):
+        view = _view(job_id)
+        if view.state != "succeeded":
+            raise ApiError(409, "job_not_done")
+        ui, report = _ui_report(view)
+        jury_bytes = store.read_jury_bytes(view)
+        if report is None or jury_bytes is None:
+            raise ApiError(500, "internal_error")
+        bundle = ExportBundle(
+            job_id=view.id, exported_at=iso_utc(utc_now()), report=ui, versions=report.versions,
+            coverage=report.coverage, original_jury_result=JuryDoneResult.model_validate_json(jury_bytes))
+        return JSONResponse(bundle.model_dump(mode="json"), headers={
+            "Content-Disposition": f'attachment; filename="cashwatch-{view.id}.json"'})
 
     @app.get("/api/v1/jobs/{job_id}/evidence/{name}")
     def get_evidence(job_id: str, name: str):

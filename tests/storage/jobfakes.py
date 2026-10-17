@@ -97,3 +97,38 @@ def write_fake_result(store, claimed, *, verdict: str = "violation", marker: str
 
 def later(sec: float) -> str:
     return iso_utc(utc_now() + timedelta(seconds=sec))
+
+
+def synthetic_source(sha256: str, duration_sec: float = 60.0):
+    """Synthetic VideoMetadata (test-only; not probed from any real file)."""
+    from cashwatch.dto import VideoMetadata
+
+    return VideoMetadata(
+        source_sha256=sha256, size_bytes=1000, container="mov,mp4,m4a,3gp,3g2,mj2", codec="h264", width=640,
+        height=360, display_rotation=0, display_width=640, display_height=360, duration_sec=duration_sec,
+        time_base_num=1, time_base_den=1000, origin_pts=0, origin_method="first_decoded_pts", first_frame_sec=0.0,
+        last_frame_sec=duration_sec, nominal_fps=30.0)
+
+
+def update_report(out: Path, *, drop: tuple[str, ...] = (), **update) -> None:
+    """Rewrite the staged report.json (before commit). ``drop`` removes keys to emulate older files."""
+    p = out / "report.json"
+    report = AnalysisReport.model_validate_json(p.read_bytes())
+    if update:
+        report = AnalysisReport.model_validate({**report.model_dump(), **update})
+    data = json.loads(report.model_dump_json())
+    for k in drop:
+        data.pop(k, None)
+    p.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+def finish(store, *, verdict: str = "violation", duration_sec: float | None = 60.0, drop: tuple[str, ...] = (),
+           **update) -> str:
+    """Claim the next queued job, stage a synthetic result (optionally with a synthetic source) and commit."""
+    c = store.claim_job("fake-worker")
+    out = write_fake_result(store, c, verdict=verdict)
+    if duration_sec is not None:
+        update.setdefault("source", synthetic_source(c.job.source_sha256, duration_sec))
+    update_report(out, drop=drop, **update)
+    assert store.commit_result(c.job.job_id, c.job.lease_generation, out)
+    return c.job.job_id

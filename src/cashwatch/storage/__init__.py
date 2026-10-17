@@ -4,17 +4,19 @@ from __future__ import annotations
 
 from cashwatch.settings import Settings
 from cashwatch.storage.store import (
+    MISSED_EVENT_ID,
     CapacityFull,
     ClaimedJobImpl,
     IdempotencyConflict,
+    JobNotDone,
     JobStore,
     JobView,
     is_job_id,
 )
 
 __all__ = [
-    "CapacityFull", "ClaimedJobImpl", "IdempotencyConflict", "JobStore", "JobView", "create_store",
-    "is_job_id",
+    "MISSED_EVENT_ID", "CapacityFull", "ClaimedJobImpl", "IdempotencyConflict", "JobNotDone", "JobStore",
+    "JobView", "create_store", "is_job_id",
 ]
 
 
