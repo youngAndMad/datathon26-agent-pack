@@ -30,6 +30,7 @@ from cashwatch.dto import (
 )
 from cashwatch.errors import PipelineError
 from cashwatch.ports import RuleRegistry
+from cashwatch.rules.schema import FORBIDDEN_RE
 from cashwatch.settings import REPO_ROOT
 
 FORBIDDEN_TERMS = re.compile(
@@ -156,7 +157,7 @@ def validate_result(report: AnalysisReport, out_dir: Path, registry: RuleRegistr
             _fail("description/type not from template", "internal_error")
         if ref.official_url not in jv.description or ref.clause not in jv.description:
             _fail("description lacks registry source", "rule_registry_invalid")
-        if FORBIDDEN_TERMS.search(jv.description) or FORBIDDEN_TERMS.search(ev.factual_text_ru):
+        if any(rx.search(t) for rx in (FORBIDDEN_TERMS, FORBIDDEN_RE) for t in (jv.description, ev.factual_text_ru)):
             _fail("forbidden assertion in description", "internal_error")
         # (7) chronological order, duplicates suppressed.
         if jv.timecode_sec < prev_t:

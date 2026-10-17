@@ -202,6 +202,23 @@ class JobStore:
             ).fetchone()
         return row is not None
 
+    IDENTITY_KEYS = ("mode", "adapter", "is_mock", "model", "revision", "registry")
+
+    def worker_identity(self, now_utc: str | None = None) -> dict:
+        """Non-secret run identity of the freshest worker (for /readyz; F-R2)."""
+        cutoff = iso_utc(self._now(now_utc) - timedelta(seconds=WORKER_FRESH_SEC))
+        with self._ro() as conn:
+            row = conn.execute(
+                "SELECT info FROM worker_status WHERE heartbeat_at >= ? ORDER BY ready DESC, heartbeat_at DESC LIMIT 1",
+                (cutoff,)).fetchone()
+        if row is None:
+            return {}
+        try:
+            info = json.loads(row[0]) if isinstance(row[0], str) else {}
+        except ValueError:
+            return {}
+        return {k: info[k] for k in self.IDENTITY_KEYS if k in info}
+
     def storage_writable(self) -> bool:
         probe = self.tmp_dir / f".probe-{uuid.uuid4().hex}"
         try:

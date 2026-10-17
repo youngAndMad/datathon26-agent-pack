@@ -9,7 +9,7 @@ export HF_HUB_DISABLE_TELEMETRY := 1
 export TRANSFORMERS_OFFLINE := 1
 export DO_NOT_TRACK := 1
 
-.PHONY: doctor bootstrap fetch-models fixtures test-contracts test benchmark build-offline start smoke verify-offline submission-check stop frontend
+.PHONY: test-integration test-offline-quick start-test bundle-wheels doctor bootstrap fetch-models fixtures test-contracts test benchmark build-offline start smoke verify-offline submission-check stop frontend
 
 doctor:
 	$(PY) -m cashwatch.pipeline.doctor
@@ -30,6 +30,19 @@ test-contracts:
 
 test:
 	$(PY) -m pytest -m "not model and not slow"
+
+test-integration:
+	$(PY) -m pytest tests/integration
+
+test-offline-quick:
+	bash tests/offline/verify_offline.sh --skip-model
+
+# Labeled synthetic end-to-end run (TEST MODE, test registry; never a release gate).
+start-test:
+	CASHWATCH_MODE=test CASHWATCH_REGISTRY_PATH=rules/registry.test.yaml bash deploy/start.sh
+
+bundle-wheels:
+	HF_HUB_OFFLINE=0 bash deploy/build_offline.sh --fetch-wheels --with-models
 
 frontend:
 	cd frontend && npm run build

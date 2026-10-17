@@ -34,6 +34,12 @@ from cashwatch.settings import REPO_ROOT, Settings, get_settings
 
 log = logging.getLogger("cashwatch.worker")
 WATCHDOG_GRACE_SEC = 8.0
+# R11: no audio processing. mlx-vlm installs audio packages transitively; they must never load.
+FORBIDDEN_MODULES = ("mlx_audio", "sounddevice", "miniaudio", "librosa", "soundfile", "torchaudio", "whisper")
+
+
+def forbidden_modules_loaded() -> list[str]:
+    return [m for m in FORBIDDEN_MODULES if m in sys.modules]
 
 
 def code_version() -> str:
@@ -63,7 +69,8 @@ def build_context(settings: Settings, perception=None) -> tuple[PipelineContext,
     if settings.mode == "production" and info.is_mock:
         errors.append("mock perception adapter in production")
     ctx = PipelineContext(
-        media=create_media(), perception=perception, registry=registry, rules_factory=create_rules,
+        media=create_media(max_pixel_area=settings.max_pixel_area,
+                           motion_fps=float(settings.profile["sampling"]["motion_proposal_fps"])), perception=perception, registry=registry, rules_factory=create_rules,
         reporting=create_reporting(registry), profile=settings.profile, mode=settings.mode,
         limits={"max_duration_sec": settings.max_duration_sec, "max_pixel_area": settings.max_pixel_area},
         code_version=code_version(), config_version=settings.profile.get("profile_id", "unknown"))
@@ -209,6 +216,10 @@ def core_main(settings: Settings) -> int:
         state["info"] = {"state": "warmup_failed", "error": type(e).__name__}
         log.error("warmup failed: %s", type(e).__name__)
         time.sleep(5)
+        return 2
+    if bad := forbidden_modules_loaded():
+        state["info"] = {"state": "not_ready", "errors": [f"forbidden audio modules loaded: {bad}"]}
+        log.error("refusing readiness: audio modules loaded %s", bad)
         return 2
     info = ctx.perception.info()
     state["info"] = {"state": "ready", "mode": settings.mode, "model": info.model_id, "revision": info.revision,

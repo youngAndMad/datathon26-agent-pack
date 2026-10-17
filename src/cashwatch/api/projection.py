@@ -51,6 +51,8 @@ def project_events(job_id: str, report: AnalysisReport) -> list[UiEvent]:
 def coverage_notice(report: AnalysisReport) -> str | None:
     # AnalysisReport carries no notice field yet (see coordination/requests/A.md); expose the
     # stored visual limitations verbatim rather than inventing text.
+    if report.coverage_notice_ru:
+        return report.coverage_notice_ru
     lim = list(report.visual_limitations_ru)
     if report.coverage is not None:
         lim.extend(x for x in report.coverage.visual_limitations if x not in lim)

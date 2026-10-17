@@ -18,7 +18,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "g0-1.0.0"
+CONTRACT_VERSION = "g0-1.1.0"  # 1.1: AnalysisReport.coverage_notice_ru (R-A2)
 TIME_DECIMALS = 3
 
 
@@ -441,6 +441,7 @@ class AnalysisReport(Strict):
     coverage: Coverage | None
     completed_stages: list[Stage]
     visual_limitations_ru: list[ShortText] = Field(default_factory=list)
+    coverage_notice_ru: Annotated[str, Field(max_length=1000)] | None = None
     events: list[ReportEvent] = Field(default_factory=list)
     review_notes: list[ReviewNote] = Field(default_factory=list)
     jury_result: JuryDoneResult | None = None
