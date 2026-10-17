@@ -1,0 +1,31 @@
+# TEMPLATE ONLY. Fill locally under evaluation/annotations/private/<clip_id>.yaml (git-ignored).
+clip_id: ""            # opaque, e.g. c001
+source_sha256: ""
+duration_sec: null
+group_id: ""           # takes/augmentations of the same scene share a group
+split: ""              # dev | val | holdout
+official:              # organizer labels, copied verbatim; never edited
+  violation_present: null
+  timestamp_sec: null
+annotator: ""          # local person/model id (no cloud agents)
+annotated_at: ""
+observed_actions:      # neutral observations first; no rule ids or legal words here
+  - action_id: a1
+    start_sec: null
+    end_sec: null
+    description_en: ""  # visible facts only; no identities, intent or authorization
+    roles: []           # e.g. [teller, customer] only when supported by scene interaction
+    objects: []
+    visibility: ""      # clear | partial | unusable
+    occlusion_note: ""
+events:                # links from observed actions to candidate rules
+  - action_ids: [a1]
+    rule_id: ""        # CW01..CW09 or "unmapped"
+    eligible: null     # applicability and visibility satisfied?
+    start_sec: null
+    end_sec: null
+    anchor_sec: null   # per the rule's anchor_convention
+    evidence_sec: []   # best 1-3 frame times, anchor first
+    transaction_boundaries: ""
+    counterexample: false   # compliant behavior that resembles the violation
+    label_uncertainty: ""   # low | medium | high + reason
