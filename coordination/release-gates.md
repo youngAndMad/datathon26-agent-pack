@@ -28,7 +28,11 @@ All model runs below used SYNTHETIC media only (D004).
 - [ ] Grouped validation, dedup, negatives, angle stress on real data — BLOCKED (X1)
 - [x] Synthetic 145 s 1080p latency: 80.7 s upload→done (n=1, no candidates); 40 s marker clips 164–173 s (n=2, 6–7 candidates verified)
 - [x] Failure paths with fake backend: T17, T18, T19, T28 (F); T15 parse/repair (C); T21 missing artifacts (F)
-- [ ] Worst-case timing with many candidates on real footage — not measured
+- [x] Real-footage latency, organizer `open.zip` (42 clips, 11.6–142.5 s), TEST mode, real MLX model, sequential:
+      42/42 done, 0 failed; upload→done p50 31.3 s, p90 86.6 s, max 101.7 s; none over 240 s.
+      Observation stage p50 29.3 s / max 99.3 s. Cloud agents saw aggregates only.
+- [ ] Worst case WITH verification on real footage — not measured: test registry produced 0 candidates on real clips,
+      so verification (~14 s per candidate measured on synthetic) is not included above.
 
 ## G4 release
 - [x] Offline cold restart with denied egress, real model (T20): 2/2 PASS, no egress attempts
