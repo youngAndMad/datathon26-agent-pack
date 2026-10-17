@@ -176,7 +176,7 @@ class LocalPerception:
             try:
                 parsed, status, in_tok, out_tok = self._run(
                     "observe", prompt, images, request.max_output_tokens, self.cfg.observe_call_cap_sec,
-                    deadline, parse, ctx, frames, [])
+                    deadline, parse, ctx, frames, [], allow_repair=not pred_ids)
                 observations, limitations = parsed.observations, parsed.limitations
             except PipelineError as e:
                 # Neutral observations are diagnostic; rule cues are the detection input. Without
@@ -324,7 +324,8 @@ class LocalPerception:
                                           res.prompt_tps, res.generation_tps))
         return res
 
-    def _run(self, kind, prompt, images, max_tokens, cap, deadline, parse, ctx, frames, pred_ids):
+    def _run(self, kind, prompt, images, max_tokens, cap, deadline, parse, ctx, frames, pred_ids,
+             *, allow_repair=True):
         req = GenRequest(system=prompt.system, segments=prompt.segments, images=images,
                          max_tokens=int(max_tokens), max_long_side=self.cfg.max_long_side_px,
                          max_pixels=self.cfg.max_pixels, context=ctx)
@@ -337,6 +338,10 @@ class LocalPerception:
             error = str(first)
             if truncated:
                 error = f"output truncated at the token limit. {error}"
+            if not allow_repair:
+                # With required compact cues following, malformed neutral prose
+                # is diagnostic only. Preserve time for that detection input.
+                raise PipelineError("model_output_invalid", f"{kind}: {error[:200]}") from None
         allowed = ([str(i + 1) for i in range(len(frames))] if self.cfg.frame_label_mode == "index"
                    else [f.frame_id for f in frames])
         rp = P.build_repair_prompt(kind=kind, error=error, previous=res.text,

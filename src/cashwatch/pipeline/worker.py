@@ -34,11 +34,15 @@ from cashwatch.settings import REPO_ROOT, Settings, get_settings
 
 log = logging.getLogger("cashwatch.worker")
 WATCHDOG_GRACE_SEC = 8.0
+_PREVIEW_SLOT = threading.BoundedSemaphore(1)
 
 
 def warmup_timeout(settings: Settings) -> float:
     # Only affects explicit Windows local test startup, never the job deadline.
-    if os.name == "nt" and settings.mode == "test" and os.environ.get("CASHWATCH_WINDOWS_CPU_LOW_MEMORY") == "1":
+    if os.name == "nt" and settings.mode == "test" and (
+        os.environ.get("CASHWATCH_WINDOWS_CPU_LOW_MEMORY") == "1"
+        or os.environ.get("CASHWATCH_WINDOWS_CPU_INT8") == "1"
+    ):
         return 600.0
     return 180.0
 # R11: no audio processing. mlx-vlm installs audio packages transitively; they must never load.
@@ -143,8 +147,12 @@ def process_one(store, ctx: PipelineContext, settings: Settings, worker_id: str)
         if lease.lost.is_set():
             raise LeaseLost("before commit")
         if store.commit_result(job.job_id, job.lease_generation, out_dir):
+            # Publication completes this job's lease/watchdog lifecycle. Optional
+            # browser transcoding must not hold up the next jury request.
+            done.set()
+            lease.close()
             log.info("job committed", extra={"job_id": job.job_id, "ms": int((time.monotonic() - t0) * 1000)})
-            _maybe_preview(store, ctx, settings, job, out_dir)
+            _start_preview(store, ctx, settings, job, out_dir)
         else:
             log.warning("commit fenced out (stale lease)", extra={"job_id": job.job_id})
     except LeaseLost:
@@ -164,6 +172,24 @@ def process_one(store, ctx: PipelineContext, settings: Settings, worker_id: str)
         lease.close()
         shutil.rmtree(work_dir, ignore_errors=True)
     return True
+
+
+def _start_preview(store, ctx: PipelineContext, settings: Settings, job, out_dir: Path) -> None:
+    """At most one optional preview in flight, no queue and no inference blocking."""
+    if not settings.preview_enabled or not _PREVIEW_SLOT.acquire(blocking=False):
+        return
+
+    def render():
+        try:
+            _maybe_preview(store, ctx, settings, job, out_dir)
+        finally:
+            _PREVIEW_SLOT.release()
+
+    try:
+        threading.Thread(target=render, name="cashwatch-preview", daemon=True).start()
+    except Exception:
+        _PREVIEW_SLOT.release()
+        log.warning("preview skipped: cannot start background task")
 
 
 def _maybe_preview(store, ctx: PipelineContext, settings: Settings, job, out_dir: Path) -> None:

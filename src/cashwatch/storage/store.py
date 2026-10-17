@@ -503,7 +503,7 @@ class JobStore:
     def commit_result(self, job_id: str, generation: int, validated_result_dir: Path,
                       now_utc: str | None = None) -> bool:
         """CAS running(gen) -> succeeded. Idempotent across a crash between promotion rename and
-        the database commit. Returns False when fenced out (stale generation / not running)."""
+        the database commit. Returns False when fenced out or the original deadline expired."""
         tmp, final = self._out_paths(job_id, generation)
         given = Path(validated_result_dir).resolve()
         if given not in (tmp.resolve(), final.resolve()):
@@ -521,16 +521,21 @@ class JobStore:
             raise FileNotFoundError("no staged result for this generation")
         else:
             self._check_result(final, job_id)
-        now_s = iso_utc(self._now(now_utc))
         rel = final.relative_to(self.root).as_posix()
         verdict, n_events, review_required, mode = self._result_summary(final)
         with self._tx() as conn:
+            # Recheck after potentially slow validation/fsync and after acquiring
+            # the transaction lock. The sweeper is not required to win this race.
+            now_s = iso_utc(self._now(now_utc))
             cur = conn.execute(
                 "UPDATE jobs SET state='succeeded', result_path=?, stage='complete', progress_json=NULL,"
                 " finished_at=?, updated_at=?, error_code=NULL, verdict=?, event_count=?, review_required=?,"
-                " mode=?, summary_cached=1 WHERE id=? AND state='running' AND generation=?",
-                (rel, now_s, now_s, verdict, n_events, int(review_required), mode, job_id, generation))
+                " mode=?, summary_cached=1 WHERE id=? AND state='running' AND generation=? AND deadline_at > ?",
+                (rel, now_s, now_s, verdict, n_events, int(review_required), mode, job_id, generation, now_s))
             if cur.rowcount != 1:
+                self._fail_where(conn,
+                    "id=? AND state='running' AND generation=? AND deadline_at <= ?",
+                    (job_id, generation, now_s), "deadline_exceeded", now_s)
                 return False
             conn.execute("DELETE FROM leases WHERE job_id=?", (job_id,))
         return True
@@ -753,7 +758,7 @@ def _fsync_tree(d: Path) -> None:
     for p in sorted(d.rglob("*"), reverse=True):
         with contextlib.suppress(OSError):
             if p.is_file() and not p.is_symlink():
-                fd = os.open(p, os.O_RDONLY)
+                fd = os.open(p, os.O_RDWR if os.name == "nt" else os.O_RDONLY)
                 try:
                     os.fsync(fd)
                 finally:
