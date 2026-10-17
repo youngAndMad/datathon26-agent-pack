@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template. Replace __REPO__ with the absolute repository path and __DATA__ with the data dir,
+     then: cp to ~/Library/LaunchAgents/ ; launchctl bootstrap gui/$(id -u) <plist>
+     A LaunchAgent (not a LaunchDaemon) is required for Metal/MLX GPU access in a user session. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.cashwatch.worker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__REPO__/.venv/bin/python</string>
+    <string>-c</string>
+    <string>from cashwatch.pipeline.worker import run; run()</string>
+  </array>
+  <key>WorkingDirectory</key><string>__REPO__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CASHWATCH_MODE</key><string>production</string>
+    <key>CASHWATCH_BACKEND</key><string>mlx</string>
+    <key>CASHWATCH_DATA_DIR</key><string>__DATA__</string>
+    <key>CASHWATCH_API_KEY_FILE</key><string>__REPO__/secrets/jury_api_key</string>
+    <key>HF_HUB_OFFLINE</key><string>1</string>
+    <key>TRANSFORMERS_OFFLINE</key><string>1</string>
+    <key>HF_HUB_DISABLE_TELEMETRY</key><string>1</string>
+    <key>DO_NOT_TRACK</key><string>1</string>
+    <key>PYTHONUNBUFFERED</key><string>1</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <!-- Restart on crash/OOM; not on a clean exit (e.g. production refusing a fake backend). -->
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>Umask</key><integer>63</integer>
+  <key>StandardOutPath</key><string>__DATA__/logs/worker.log</string>
+  <key>StandardErrorPath</key><string>__DATA__/logs/worker.log</string>
+</dict>
+</plist>

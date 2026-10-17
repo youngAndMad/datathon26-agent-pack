@@ -1,0 +1,517 @@
+# cashwatch PRODUCTION rule registry (owner: agent D).
+#
+# Every rule here is DISABLED. Source text for each clause was captured from the official
+# ИПС «Әділет» (adilet.zan.kz) on 2026-10-17 and is stored offline in rules/sources/ with
+# sha256 hashes; excerpts are verbatim slices (rules/sources/excerpts.yaml).
+# A rule may become `approved` only after: verified applicability/scope, positive + negative +
+# unknown predicate tests, LOCAL visual validation on authorized clips (blocked for cloud agents,
+# decision D004/D011), owner review and recorded validation counts. Until then the service must
+# report "no approved rules" and stay not-ready in production instead of returning no_violation.
+#
+# Field semantics: see src/cashwatch/rules/schema.py. Predicate text is neutral, visual, English
+# (sent to the local model); Russian explanation fragments are fixed templates (no model prose).
+
+registry_version: "prod-2026-10-17.1"
+test_only: false
+label: "PRODUCTION"
+excerpts_file: sources/excerpts.yaml
+
+sources:
+  L01:
+    kind: official
+    document_title: "Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в банках второго уровня, филиалах банков-нерезидентов Республики Казахстан, Национальном операторе почты и юридических лицах, исключительной деятельностью которых является инкассация банкнот, монет и ценностей (утверждены постановлением Правления Национального Банка Республики Казахстан от 29 ноября 2019 года № 231)"
+    authority: "Правление Национального Банка Республики Казахстан"
+    document_date: "2019-11-29"
+    document_number: "№ 231 (зарегистрировано в Министерстве юстиции Республики Казахстан 3 декабря 2019 года № 19680)"
+    official_url: "https://adilet.zan.kz/rus/docs/V1900019680"
+    snapshot_file: sources/L01-2026-10-17.api.json
+    snapshot_sha256: "206d01dbdb549c539736fe0907dd7e18f206b94074c527cbf222ac27c88aca36"
+    text_file: sources/L01-2026-10-17.txt
+    text_sha256: "8a528e5b3dd5d4d750ca671764d6350dc29c6dee828013ba1dab552cf237c182"
+    corroboration_files:
+      - {file: sources/L01-2026-10-17.old.html, sha256: "46b670bb4eeadd7fd2105eb756a87586dc7724dc9abea6951b72609ccf6bdc98"}
+      - {file: sources/L01-2026-10-17.old-info.html, sha256: "b0e3240b3e31e57d89dd79e0d61ea6518c5ab6658af169fae56bf2c130e72b8f"}
+      - {file: sources/L01-2026-10-17.old-history.html, sha256: "0e924097f17e9d3085d600577c85f976742a02aea7fcb49e1e045831ec1e5b99"}
+    retrieved_at: "2026-10-17T08:33:20Z"
+    edition_date: "2026-07-12"
+    edition_note: "Консолидированный текст ИПС «Әділет» (ИЗПИ МЮ РК), «Дата изменения акта» 12.07.2026 по странице /info; последняя запись истории изменений — 12.07.2026; состояние базы на 14.10.2026. Не является официальным опубликованием; изменения после 14.10.2026 не проверялись."
+    edition_verified: true
+    in_force: true
+  L02:
+    kind: official
+    document_title: "Постановление Правления Национального Банка Республики Казахстан от 10 ноября 2025 года № 71 «О внесении изменений в некоторые постановления Правления Национального Банка Республики Казахстан по вопросам наличного денежного обращения и инкассации банкнот, монет и ценностей»"
+    authority: "Правление Национального Банка Республики Казахстан"
+    document_date: "2025-11-10"
+    document_number: "№ 71 (зарегистрировано в Министерстве юстиции Республики Казахстан 18 ноября 2025 года № 37429)"
+    official_url: "https://adilet.zan.kz/rus/docs/V2500037429"
+    snapshot_file: sources/L02-2026-10-17.api.json
+    snapshot_sha256: "63092cc26b977467e0295300bb11771124771e6c6d7b0b4d6e7fd9e3ec4002d7"
+    text_file: sources/L02-2026-10-17.txt
+    text_sha256: "5396db5727a623e4adf2e3202a972a32e3c34312bb3a902f357a6b1e258001d5"
+    retrieved_at: "2026-10-17T08:34:49Z"
+    edition_date: "2025-11-10"
+    edition_note: "Амендирующий акт; введение в действие — п. 4 (по истечении десяти календарных дней после первого официального опубликования; часть положений — с 1 января 2026 года). Официальное опубликование по метаданным: ЭКБ НПА РК, 20.11.2025. Точная дата вступления в силу не вычислялась."
+    edition_verified: true
+    in_force: true
+  L03:
+    kind: official
+    document_title: "Постановление Правления Национального Банка Республики Казахстан от 28 февраля 2022 года № 19"
+    authority: "Правление Национального Банка Республики Казахстан"
+    document_date: "2022-02-28"
+    document_number: "№ 19 (государственная регистрация № 27073)"
+    official_url: "https://adilet.zan.kz/rus/docs/V2200027073"
+    snapshot_file: sources/L03-2026-10-17.api.json
+    snapshot_sha256: "f722cd9f0230540e134e13ba14ff21a08488c71b8b0ac9df540501e55c037f8a"
+    text_file: sources/L03-2026-10-17.txt
+    text_sha256: "8e289c3dddee380e6b083708e8fdd47904ddfdb79f1b0f1c01b6770c7dab9d7b"
+    retrieved_at: "2026-10-17T08:35:45Z"
+    edition_date: "2022-02-28"
+    edition_note: "Амендирующий акт (новая редакция пп. 19, 31 Правил); введение в действие — п. 5. Официальное опубликование по метаданным: ЭКБ НПА РК, 14.03.2022."
+    edition_verified: true
+    in_force: true
+  L04:
+    kind: official
+    document_title: "Постановление Правления Национального Банка Республики Казахстан от 16 марта 2026 года № 25"
+    authority: "Правление Национального Банка Республики Казахстан"
+    document_date: "2026-03-16"
+    document_number: "№ 25 (государственная регистрация № 38217)"
+    official_url: "https://adilet.zan.kz/rus/docs/V2600038217"
+    snapshot_file: sources/L04-2026-10-17.api.json
+    snapshot_sha256: "2322daff2e5708ed719e224092d9c9b8e5084381f3fde11fd8f215da1db7a8be"
+    text_file: sources/L04-2026-10-17.txt
+    text_sha256: "3705c72fbf25a740d13345e42a7255886649b6030773e6df2a25b08c179f5321"
+    retrieved_at: "2026-10-17T08:35:46Z"
+    edition_date: "2026-06-30"
+    edition_note: "Амендирующий акт; п. 6 — часть положений вводится в действие с 12 июля 2026 года; сам акт изменён постановлением от 30.06.2026 № 78 (по сноске). Изменения уже отражены в консолидированном тексте L01 (редакция 12.07.2026)."
+    edition_verified: true
+    in_force: true
+
+# ---------------------------------------------------------------------------------------------
+# Candidate rules (RULES_CATALOG.md). All disabled: local visual validation is blocked (D004).
+# source_status records what was actually verified on 2026-10-17 from the official snapshot.
+# ---------------------------------------------------------------------------------------------
+rules:
+  - rule_id: CW01
+    version: "0.1.0"
+    state: disabled
+    disabled_reason: "Нет локальной визуальной валидации (D004); применимость к записям не проверена."
+    symbol: ACTIVE_RECEIPT_DEPARTURE
+    type_ru: "Выход кассира до завершения обслуживания клиента"
+    source_id: L01
+    clause: "22"
+    excerpt_ids: [L01-p22]
+    source_status:
+      clause_text: verified
+      edition: verified
+      applicability: unverified
+      local_visual_validation: blocked
+      notes: "п. 22 находится в параграфе 2 «Порядок осуществления кассовых операций по приему наличных денег»; сноски об изменении п. 22 в консолидированном тексте нет."
+    last_verified: "2026-10-17"
+    paraphrase_ru: "Кассовому работнику не допускается покидать рабочее место до окончания обслуживания клиента."
+    applicability_en:
+      - "Applies only to a staff member at a teller work position who is serving a customer at the counter."
+      - "Service must have visibly started and must not have visibly ended when the staff member leaves."
+    nonvisual_prerequisites_en:
+      - "Whether the person is a cashier (кассовый работник) is established only from scene interaction, never from identity or appearance."
+    predicates:
+      - {predicate_id: CW01.service_in_progress, kind: trigger, required_state: supported, question_en: "Is a cash or document service interaction visibly in progress between a person on the customer side of the counter and a staff member at the teller work position?", counterexamples_en: ["The customer is only waiting in a queue and service has not started.", "The staff member is working alone with no customer at the counter."]}
+      - {predicate_id: CW01.leaves_position, kind: decisive, anchor: true, required_state: supported, question_en: "Does the staff member who was serving at the teller work position move fully away from that work position (out of the work area or out of the frame) while the customer is still at the counter?", counterexamples_en: ["The staff member stands up, turns or reaches within the work position.", "The staff member steps one pace aside and stays at the work position."]}
+      - {predicate_id: CW01.service_unfinished, kind: decisive, required_state: supported, question_en: "At the moment the staff member leaves, is the service visibly unfinished (customer still waiting at the counter, or the customer's cash/documents still on the counter)?", counterexamples_en: ["The customer has already received everything and is leaving."]}
+      - {predicate_id: CW01.area_visible, kind: visibility, required_state: supported, question_en: "Are the teller work position and the customer side of the counter both visible throughout the interval?", counterexamples_en: []}
+      - {predicate_id: CW01.excl_service_ended, kind: exclusion, required_state: not_supported, question_en: "Had the service interaction visibly ended (customer gone or handed everything) before the staff member left?", counterexamples_en: []}
+    counterexamples_en:
+      - "Standing up or reaching while staying at the work position."
+      - "Leaving after the transaction is visibly finished."
+      - "Customer waiting before service started."
+      - "Unclear role or zone."
+    boundary_notes_en:
+      - "Leaving means the person is no longer at the work position; a short turn or reach is not leaving."
+    visibility_requirements_en:
+      - "Teller position and customer side visible from service start until the departure."
+    temporal: {kind: action, transition_from: null, context_before_sec: 3.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_anchor_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW01.v1
+      fact_ru: "кассовый работник отходит от рабочего места, пока клиент остаётся у кассы и обслуживание не завершено"
+      interpretation_ru: "оставление рабочего места до окончания обслуживания клиента"
+      predicate_ru: "работник покидает рабочее место при видимо незавершённом обслуживании клиента"
+    limitations_ru:
+      - "Роль работника установлена только по взаимодействию в кадре."
+      - "Завершённость обслуживания оценивается только по видимым действиям."
+    approval: {owner: null, date: null, validation_counts: null, notes: "not approved"}
+
+  - rule_id: CW02
+    version: "0.1.0"
+    state: disabled
+    disabled_reason: "Нет локальной визуальной валидации (D004); состояние запирания хранилища невидимо."
+    symbol: PRIOR_BATCH_NOT_STORED
+    type_ru: "Наличные предыдущего клиента вне места хранения"
+    source_id: L01
+    clause: "20 (часть вторая)"
+    excerpt_ids: [L01-p20]
+    source_status:
+      clause_text: verified
+      edition: verified
+      applicability: unverified
+      local_visual_validation: blocked
+      notes: "п. 20 часть вторая: на рабочем месте находятся наличные деньги клиента; ранее принятые наличные хранятся в запирающихся устройствах на рабочем месте. Сноски об изменении п. 20 нет."
+    last_verified: "2026-10-17"
+    paraphrase_ru: "На рабочем месте кассира должны находиться только наличные текущего клиента; ранее принятые наличные хранятся в запирающихся на ключ устройствах (шкаф, сейф, тележка, ящики стола, тумба)."
+    applicability_en:
+      - "Applies to cash received from one customer that remains openly on the work surface after the next customer's service starts."
+    nonvisual_prerequisites_en:
+      - "Whether a drawer or cabinet is locked is not visible and is never asserted."
+    predicates:
+      - {predicate_id: CW02.prior_receipt_completed, kind: trigger, required_state: supported, question_en: "Is cash received from a first customer visibly placed on the teller work surface, after which that customer's service visibly ends (the customer leaves the counter)?", counterexamples_en: ["A pile already lies on the desk at the start of the clip with unknown origin."]}
+      - {predicate_id: CW02.next_client_prior_cash_on_surface, kind: decisive, anchor: true, required_state: supported, question_en: "Does a different, next customer begin being served while the cash from the previous customer still lies openly on the work surface (not placed into a drawer, safe, cabinet, cart or other storage device)?", counterexamples_en: ["The cash on the surface belongs to the current customer.", "The items are paper forms or receipts, not banknotes."]}
+      - {predicate_id: CW02.surface_visible, kind: visibility, required_state: supported, question_en: "Is the teller work surface visible from the first customer's receipt until the next customer's service starts?", counterexamples_en: []}
+      - {predicate_id: CW02.excl_paper_or_current, kind: exclusion, required_state: not_supported, question_en: "Could the items on the work surface be documents/paper or cash belonging to the current customer?", counterexamples_en: []}
+    counterexamples_en:
+      - "Initial unidentified pile."
+      - "Current customer's batch."
+      - "Paper mistaken for cash."
+    boundary_notes_en:
+      - "Do not assume drawers are locked or unlocked."
+    visibility_requirements_en:
+      - "Work surface continuously visible across the customer change."
+    temporal: {kind: transition, transition_from: CW02.prior_receipt_completed, context_before_sec: 6.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_anchor_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW02.v1
+      fact_ru: "наличные предыдущего клиента остаются на рабочем столе при начале обслуживания следующего клиента"
+      interpretation_ru: "нахождение ранее принятых наличных вне предназначенных для их хранения устройств"
+      predicate_ru: "ранее принятые наличные не убраны в шкаф, сейф, тележку, ящик стола или тумбу"
+    limitations_ru:
+      - "Состояние запирания устройств хранения по видео не устанавливается."
+    approval: {owner: null, date: null, validation_counts: null, notes: "not approved"}
+
+  - rule_id: CW03
+    version: "0.1.0"
+    state: disabled
+    disabled_reason: "Нет локальной визуальной валидации (D004)."
+    symbol: RECEIPT_CLIENT_ABSENT
+    type_ru: "Приём или пересчёт без присутствия клиента"
+    source_id: L01
+    clause: "20 (часть первая)"
+    excerpt_ids: [L01-p20]
+    source_status:
+      clause_text: verified
+      edition: verified
+      applicability: unverified
+      local_visual_validation: blocked
+      notes: "п. 20 часть первая: наличные деньги принимаются и пересчитываются кассовым работником в присутствии клиента. Внутренний пересчёт регулируется п. 42 (не этим правилом)."
+    last_verified: "2026-10-17"
+    paraphrase_ru: "Наличные деньги принимаются и пересчитываются кассовым работником в присутствии клиента."
+    applicability_en:
+      - "Applies only to receipt of a customer's cash at the counter, not to internal counting."
+    nonvisual_prerequisites_en:
+      - "Whether the counting relates to a customer receipt is established only from visible interaction."
+    predicates:
+      - {predicate_id: CW03.counting_receipt, kind: trigger, required_state: supported, question_en: "Is the staff member at the teller work position counting or accepting loose banknotes that were just handed over across the counter?", counterexamples_en: ["End-of-day or internal counting with no customer transaction."]}
+      - {predicate_id: CW03.client_area_empty, kind: decisive, anchor: true, required_state: supported, question_en: "During that counting or acceptance, is the customer side of the counter fully visible and empty of any customer?", counterexamples_en: ["The customer may stand outside the camera view."]}
+      - {predicate_id: CW03.client_area_visible, kind: visibility, required_state: supported, question_en: "Is the entire customer-side area in front of the teller position inside the frame and unobstructed during the counting?", counterexamples_en: []}
+      - {predicate_id: CW03.excl_internal_counting, kind: exclusion, required_state: not_supported, question_en: "Is this an internal counting/sorting operation unrelated to a customer receipt?", counterexamples_en: []}
+    counterexamples_en:
+      - "Customer outside the crop."
+      - "Uncertain transaction."
+      - "Clip starts after the customer left."
+    boundary_notes_en:
+      - "Absence of a customer counts only if the whole customer area is visible."
+    visibility_requirements_en:
+      - "Full customer-side area visible during the counting."
+    temporal: {kind: state, transition_from: null, context_before_sec: 3.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_all_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW03.v1
+      fact_ru: "пересчёт принимаемых наличных выполняется при отсутствии клиента в полностью видимой зоне у кассы"
+      interpretation_ru: "приём и пересчёт наличных денег не в присутствии клиента"
+      predicate_ru: "зона клиента полностью видна и клиент в ней отсутствует во время пересчёта"
+    limitations_ru:
+      - "Клиент может находиться вне кадра; оценивается только видимая зона."
+    approval: {owner: null, date: null, validation_counts: null, notes: "not approved"}
+
+  - rule_id: CW04
+    version: "0.1.0"
+    state: disabled
+    disabled_reason: "Нет локальной визуальной валидации (D004); не проверено, относится ли рабочее место кассира на записях к кассовому узлу (п. 5)."
+    symbol: PERSONAL_ITEM_IN_CASH_UNIT
+    type_ru: "Личные вещи сотрудника в кассовом узле"
+    source_id: L01
+    clause: "12"
+    excerpt_ids: [L01-p12, L01-p12-note, L01-p5]
+    source_status:
+      clause_text: verified
+      edition: verified
+      applicability: unverified
+      local_visual_validation: blocked
+      notes: "п. 12 в редакции постановления НБРК от 10.11.2025 № 71 (L02, сверено с текстом изменения L02-amend-p12). Исключения: лекарственные средства, медицинские изделия, средства связи без функции фото- и видеофиксации. Кассовый узел определён в п. 5."
+    last_verified: "2026-10-17"
+    paraphrase_ru: "Личные вещи, наличные деньги и ценности работников банка хранятся вне кассового узла; допускается внос лекарств, медицинских изделий и средств связи без функции фото- и видеофиксации."
+    applicability_en:
+      - "Applies only inside a cash unit (кассовый узел) and only to items belonging to bank staff."
+    nonvisual_prerequisites_en:
+      - "Ownership of an item and whether a device can take photos/video are often not visible; then unknown."
+      - "Whether the filmed area is part of a cash unit must be confirmed for the site, not inferred."
+    predicates:
+      - {predicate_id: CW04.item_in_work_area, kind: trigger, required_state: supported, question_en: "Is a bag, handbag, backpack, wallet or mobile phone visible inside the staff work area behind the teller counter?", counterexamples_en: ["The item is on the customer side of the counter."]}
+      - {predicate_id: CW04.item_is_staff_personal, kind: decisive, anchor: true, required_state: supported, question_en: "Is the item clearly the staff member's own (brought in, kept or used by the staff member), and if it is a phone, is a camera lens visible on it?", counterexamples_en: ["A customer's item handed over during service.", "A bank device: scanner, card terminal, calculator, counting machine.", "A medicine or medical item."]}
+      - {predicate_id: CW04.area_visible, kind: visibility, required_state: supported, question_en: "Is the item clearly visible (not blurred or mostly occluded) in the staff work area?", counterexamples_en: []}
+      - {predicate_id: CW04.excl_permitted_item, kind: exclusion, required_state: not_supported, question_en: "Could the item be a customer's item, bank equipment, a medicine/medical item, or a communication device without a camera?", counterexamples_en: []}
+    counterexamples_en:
+      - "Client device."
+      - "Bank scanner or calculator."
+      - "Permitted non-camera device."
+      - "Medical item."
+      - "Uncertain ownership."
+    boundary_notes_en:
+      - "Do not infer ownership from appearance of the person."
+    visibility_requirements_en:
+      - "Item and its location clearly visible."
+    temporal: {kind: state, transition_from: null, context_before_sec: 2.0, context_after_sec: 2.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_all_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW04.v1
+      fact_ru: "в рабочей зоне кассового работника находится личная вещь работника"
+      interpretation_ru: "хранение личных вещей работника в кассовом узле"
+      predicate_ru: "предмет относится к личным вещам работника и не подпадает под допустимые исключения"
+    limitations_ru:
+      - "Принадлежность предмета и наличие камеры у устройства оцениваются только визуально."
+    approval: {owner: null, date: null, validation_counts: null, notes: "not approved"}
+
+  - rule_id: CW05
+    version: "0.1.0"
+    state: disabled
+    disabled_reason: "Пропуск действия требует полного видимого интервала; нет локальной валидации (D004)."
+    symbol: REQUIRED_COUNT_OMITTED
+    type_ru: "Признаки пропуска обязательного пересчёта"
+    source_id: L01
+    clause: "19 (подпункт 2)), 31 (подпункт 4)); исключения — п. 32"
+    excerpt_ids: [L01-p19, L01-p19-note, L01-p31, L01-p32]
+    source_status:
+      clause_text: verified
+      edition: verified
+      applicability: unverified
+      local_visual_validation: blocked
+      notes: "пп. 2) п. 19 в редакции L02 (сверено с L02-amend-p19); п. 31 в редакции L03 с изменением L02; п. 32 — выдача без полистного пересчёта при неповреждённой упаковке."
+    last_verified: "2026-10-17"
+    paraphrase_ru: "При приёме кассовый работник принимает банкноты с полистным пересчётом (п. 19 пп. 2)); при выдаче пересчитывает подготовленные наличные в присутствии клиента (п. 31 пп. 4)); целые пачки в неповреждённой упаковке выдаются без полистного пересчёта (п. 32)."
+    applicability_en:
+      - "Applies to loose banknotes received from or issued to a customer at the counter."
+      - "Does not apply to intact bank packaging on issue (p.32)."
+    nonvisual_prerequisites_en:
+      - "Counting may be done by a machine or by hand; both are valid."
+    predicates:
+      - {predicate_id: CW05.loose_cash_handled, kind: trigger, required_state: supported, question_en: "Does the staff member receive loose (unpackaged) banknotes from, or hand loose banknotes to, a customer at the teller work position?", counterexamples_en: ["The banknotes are in intact bank straps/packaging."]}
+      - {predicate_id: CW05.count_performed, kind: decisive, required_state: contradicted, question_en: "Are those banknotes counted note by note, by hand or with a counting machine, at any time in the interval?", counterexamples_en: ["Counting happens outside the frame.", "A short count falls between sampled frames."]}
+      - {predicate_id: CW05.transaction_completed, kind: completion, anchor: true, required_state: supported, question_en: "Is the handling completed in view: received banknotes put away into storage, or issued banknotes taken by the customer?", counterexamples_en: []}
+      - {predicate_id: CW05.hands_cash_visible, kind: visibility, required_state: supported, question_en: "Are the staff member's hands, the banknotes and any counting machine visible for the whole interval from handover to completion?", counterexamples_en: []}
+      - {predicate_id: CW05.excl_packaged_or_offcamera, kind: exclusion, required_state: contradicted, question_en: "Could the cash be intact packaged bundles, or could counting have happened off-camera or between frames?", counterexamples_en: []}
+    counterexamples_en:
+      - "Intact eligible packaging."
+      - "Manual or machine count."
+      - "Automated equipment."
+      - "Action between sparse samples."
+      - "Occlusion."
+    boundary_notes_en:
+      - "Set interval_complete=true only if the whole opportunity from handover to completion is visible without cuts or gaps."
+    visibility_requirements_en:
+      - "Continuous visibility of hands, cash and counting machine area."
+    temporal: {kind: omission, transition_from: null, context_before_sec: 5.0, context_after_sec: 5.0, requires_complete_interval: true, max_frame_gap_sec: 1.0}
+    anchor_convention: completion_transition
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW05.v1
+      fact_ru: "наличные завершены обработкой без видимого пересчёта на полностью видимом интервале"
+      interpretation_ru: "пропуск обязательного пересчёта банкнот"
+      predicate_ru: "на всём видимом интервале от передачи до завершения пересчёт не виден"
+    limitations_ru:
+      - "Пересчёт мог выполняться вне кадра или между кадрами выборки."
+    approval: {owner: null, date: null, validation_counts: null, notes: "not approved"}
+
+  - rule_id: CW06
+    version: "0.1.0"
+    state: disabled
+    disabled_reason: "Пропуск проверки трудно доказать по видео; нет локальной валидации (D004)."
+    symbol: INCOMING_BAG_CHECK_OMITTED
+    type_ru: "Признаки пропуска проверки принимаемой сумки"
+    source_id: L01
+    clause: "24 (подпункты 3), 4))"
+    excerpt_ids: [L01-p24]
+    source_status:
+      clause_text: verified
+      edition: verified
+      applicability: unverified
+      local_visual_validation: blocked
+      notes: "п. 24: кассовый работник проверяет целостность сумки и правильность пломбирования при приёме от подразделения инкассации/инкассаторской организации."
+    last_verified: "2026-10-17"
+    paraphrase_ru: "При приёме наличных от подразделения инкассации кассовый работник проверяет целостность сумки и правильность её пломбирования."
+    applicability_en:
+      - "Applies to a collection bag handed to the teller by a cash collection worker."
+    nonvisual_prerequisites_en:
+      - "A quick visual check may suffice; absence of a long inspection is not absence of a check."
+    predicates:
+      - {predicate_id: CW06.bag_received, kind: trigger, required_state: supported, question_en: "Is a sealed cash collection bag handed to the staff member by a cash collection worker?", counterexamples_en: []}
+      - {predicate_id: CW06.bag_inspected, kind: decisive, required_state: contradicted, question_en: "Does the staff member visibly look at or handle the bag surface and its seal at any time in the interval?", counterexamples_en: ["A brief glance may be an inspection."]}
+      - {predicate_id: CW06.acceptance_completed, kind: completion, anchor: true, required_state: supported, question_en: "Is the bag acceptance completed in view (bag opened or put away, or the collection worker leaves)?", counterexamples_en: []}
+      - {predicate_id: CW06.bag_visible, kind: visibility, required_state: supported, question_en: "Are the bag, its seal area and the staff member's hands visible for the whole interval?", counterexamples_en: []}
+      - {predicate_id: CW06.excl_check_possible, kind: exclusion, required_state: contradicted, question_en: "Could an inspection have happened unseen (occlusion, seal too small, gaps between frames)?", counterexamples_en: []}
+    counterexamples_en:
+      - "A quick glance may suffice."
+      - "Small invisible seal."
+    boundary_notes_en:
+      - "There is no statutory minimum inspection duration."
+    visibility_requirements_en:
+      - "Continuous view of bag and seal from handover to completion."
+    temporal: {kind: omission, transition_from: null, context_before_sec: 5.0, context_after_sec: 5.0, requires_complete_interval: true, max_frame_gap_sec: 1.0}
+    anchor_convention: completion_transition
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW06.v1
+      fact_ru: "сумка от работника инкассации принята без видимой проверки целостности и пломбы"
+      interpretation_ru: "пропуск проверки целостности сумки и правильности пломбирования"
+      predicate_ru: "на всём видимом интервале приёма проверка сумки и пломбы не видна"
+    limitations_ru:
+      - "Кратковременная визуальная проверка может быть не видна на записи."
+    approval: {owner: null, date: null, validation_counts: null, notes: "not approved"}
+
+  - rule_id: CW07
+    version: "0.1.0"
+    state: disabled
+    disabled_reason: "Нет локальной визуальной валидации (D004)."
+    symbol: DAMAGED_BAG_NO_COLLECTOR
+    type_ru: "Вскрытие повреждённой сумки без представителя инкассации"
+    source_id: L01
+    clause: "25"
+    excerpt_ids: [L01-p25]
+    source_status:
+      clause_text: verified
+      edition: verified
+      applicability: unverified
+      local_visual_validation: blocked
+      notes: "п. 25: при нарушении целостности сумки вскрытие и пересчёт — в присутствии работника подразделения инкассации или инкассаторской организации."
+    last_verified: "2026-10-17"
+    paraphrase_ru: "При обнаружении нарушения целостности сумки кассовый работник вскрывает и пересчитывает её содержимое в присутствии работника инкассации."
+    applicability_en:
+      - "Applies only when bag damage is clearly visible before opening."
+    nonvisual_prerequisites_en:
+      - "The role of a person (collection worker) is established only from the visible handover context."
+    predicates:
+      - {predicate_id: CW07.bag_damaged, kind: trigger, required_state: supported, question_en: "Is a cash collection bag with clearly visible damage (tear, cut, broken seal) present before it is opened?", counterexamples_en: ["The bag is intact."]}
+      - {predicate_id: CW07.opened_without_collector, kind: decisive, anchor: true, required_state: supported, question_en: "Does the staff member open the damaged bag and count its contents while the person who delivered the bag is no longer present in the fully visible area?", counterexamples_en: ["The delivering person stands just outside the frame."]}
+      - {predicate_id: CW07.area_visible, kind: visibility, required_state: supported, question_en: "Is the whole area where the delivering person would stand visible while the bag is opened?", counterexamples_en: []}
+      - {predicate_id: CW07.excl_unclear, kind: exclusion, required_state: not_supported, question_en: "Is the damage unclear, or could the delivering person be present off-camera?", counterexamples_en: []}
+    counterexamples_en:
+      - "Intact bag."
+      - "Damage unclear."
+      - "Representative off camera."
+      - "Unknown role."
+    boundary_notes_en: []
+    visibility_requirements_en:
+      - "Bag damage and the surrounding area visible."
+    temporal: {kind: action, transition_from: null, context_before_sec: 5.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_anchor_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW07.v1
+      fact_ru: "повреждённая сумка вскрывается при отсутствии работника инкассации в полностью видимой зоне"
+      interpretation_ru: "вскрытие повреждённой сумки без присутствия работника инкассации"
+      predicate_ru: "повреждение сумки видно, а работник инкассации отсутствует в полностью видимой зоне"
+    limitations_ru:
+      - "Роль работника инкассации устанавливается только по контексту передачи сумки."
+    approval: {owner: null, date: null, validation_counts: null, notes: "not approved"}
+
+  - rule_id: CW08
+    version: "0.1.0"
+    state: disabled
+    disabled_reason: "Вероятно неприменимо к клиентскому обслуживанию у кассы; нет локальной валидации (D004)."
+    symbol: BACKOFFICE_NO_CONTROLLER
+    type_ru: "Пересчёт вне клиентской операции без контроля"
+    source_id: L01
+    clause: "42"
+    excerpt_ids: [L01-p42]
+    source_status:
+      clause_text: verified
+      edition: verified
+      applicability: unverified
+      local_visual_validation: blocked
+      notes: "п. 42: пересчёт, сортировка и упаковка — в присутствии контролирующего работника, за исключением приёма и выдачи наличных клиенту."
+    last_verified: "2026-10-17"
+    paraphrase_ru: "Пересчёт, сортировка и упаковка наличных выполняются в присутствии контролирующего работника, кроме операций приёма и выдачи наличных клиенту."
+    applicability_en:
+      - "Applies only to counting/sorting/packing that is not a customer receipt or issue."
+    nonvisual_prerequisites_en:
+      - "Whether another person is a controlling employee is not visible; only presence of a second staff member is assessed."
+    predicates:
+      - {predicate_id: CW08.backoffice_processing, kind: trigger, required_state: supported, question_en: "Does a staff member count, sort or pack banknotes with no customer service interaction taking place?", counterexamples_en: ["Ordinary customer receipt or issue at the counter."]}
+      - {predicate_id: CW08.no_second_staff, kind: decisive, anchor: true, required_state: supported, question_en: "Is no second staff member present and watching the counting/sorting/packing within the fully visible area?", counterexamples_en: ["A second person may stand outside the frame."]}
+      - {predicate_id: CW08.area_visible, kind: visibility, required_state: supported, question_en: "Is the whole surrounding work area visible during the processing?", counterexamples_en: []}
+      - {predicate_id: CW08.excl_client_operation, kind: exclusion, required_state: not_supported, question_en: "Is this counting part of a customer receipt or issue operation?", counterexamples_en: []}
+    counterexamples_en:
+      - "Ordinary client counter service."
+      - "Off-camera controller."
+      - "Scene category unclear."
+    boundary_notes_en: []
+    visibility_requirements_en:
+      - "Full work area visible."
+    temporal: {kind: action, transition_from: null, context_before_sec: 3.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_all_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW08.v1
+      fact_ru: "пересчёт, сортировка или упаковка наличных вне обслуживания клиента выполняются без второго работника в видимой зоне"
+      interpretation_ru: "выполнение кассовых операций по пересчёту без контролирующего работника"
+      predicate_ru: "операция не связана с обслуживанием клиента и второй работник в полностью видимой зоне отсутствует"
+    limitations_ru:
+      - "Полномочия присутствующих лиц по видео не устанавливаются."
+    approval: {owner: null, date: null, validation_counts: null, notes: "not approved"}
+
+  - rule_id: CW09
+    version: "0.1.0"
+    state: disabled
+    disabled_reason: "Пропуск проверки трудно доказать по видео; нет локальной валидации (D004)."
+    symbol: COLLECTOR_BAG_CHECK
+    type_ru: "Признаки пропуска проверки сумки инкассатором"
+    source_id: L01
+    clause: "107 (подпункты 1), 2))"
+    excerpt_ids: [L01-p107]
+    source_status:
+      clause_text: verified
+      edition: verified
+      applicability: unverified
+      local_visual_validation: blocked
+      notes: "п. 107: инкассатор-сборщик при приёме от клиента проверяет целостность сумки и правильность пломбирования (с изменением от 19.12.2022 № 125)."
+    last_verified: "2026-10-17"
+    paraphrase_ru: "Инкассатор-сборщик при приёме банкнот, монет и ценностей от клиента проверяет целостность сумки и правильность пломбирования."
+    applicability_en:
+      - "Applies to a collector accepting a bag from a client."
+    nonvisual_prerequisites_en:
+      - "Collector role only from visible handover context."
+    predicates:
+      - {predicate_id: CW09.collector_receives_bag, kind: trigger, required_state: supported, question_en: "Does a cash collection worker receive a sealed bag from a client or staff member?", counterexamples_en: ["Alternative authorized containers."]}
+      - {predicate_id: CW09.collector_checks_bag, kind: decisive, required_state: contradicted, question_en: "Does the collection worker visibly look at or handle the bag surface and seal at any time in the interval?", counterexamples_en: ["A brief glance may be a check."]}
+      - {predicate_id: CW09.acceptance_completed, kind: completion, anchor: true, required_state: supported, question_en: "Is the acceptance completed in view (bag put away or the collector leaves with it)?", counterexamples_en: []}
+      - {predicate_id: CW09.bag_visible, kind: visibility, required_state: supported, question_en: "Are the bag, its seal and the collector's hands visible for the whole interval?", counterexamples_en: []}
+      - {predicate_id: CW09.excl_unseen_check, kind: exclusion, required_state: contradicted, question_en: "Could a check have happened unseen (occlusion, small seal, gaps between frames)?", counterexamples_en: []}
+    counterexamples_en:
+      - "Alternative authorized containers."
+      - "Unseen seal."
+      - "No visible proof of inspection absence."
+    boundary_notes_en:
+      - "Set interval_complete=true only if the whole handover is visible without cuts or gaps."
+    visibility_requirements_en:
+      - "Continuous view of bag and seal."
+    temporal: {kind: omission, transition_from: null, context_before_sec: 5.0, context_after_sec: 5.0, requires_complete_interval: true, max_frame_gap_sec: 1.0}
+    anchor_convention: completion_transition
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW09.v1
+      fact_ru: "работник инкассации принимает сумку без видимой проверки целостности и пломбы"
+      interpretation_ru: "пропуск проверки сумки инкассатором-сборщиком"
+      predicate_ru: "на всём видимом интервале приёма проверка сумки и пломбы не видна"
+    limitations_ru:
+      - "Кратковременная проверка может быть не видна на записи."
+    approval: {owner: null, date: null, validation_counts: null, notes: "not approved"}

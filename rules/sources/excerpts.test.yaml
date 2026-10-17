@@ -1,0 +1,11 @@
+generated_by: manual synthetic fixture (agent D); offsets are python str indices
+excerpts:
+- excerpt_id: TEST-fixture-1
+  source_id: TEST
+  label: синтетический тест
+  text_file: TEST-fixture-synthetic.txt
+  text_sha256: dd739060eb0b438c5910643dbaedfbe981731cdaa0755f973d3714915cde7dab
+  start: 116
+  end: 366
+  text: 'TEST01. Синтетическое тестовое правило: красный квадрат, находившийся внутри жёлтой прямоугольной зоны, полностью выходит за её пределы. Используется только для сквозной проверки конвейера на сгенерированном видео в явно обозначенном тестовом режиме.'
+failures: []

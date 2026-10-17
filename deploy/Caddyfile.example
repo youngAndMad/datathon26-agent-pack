@@ -1,0 +1,69 @@
+# Caddy v2 reverse proxy for a TEAM-CONTROLLED host (spec §14). Copy to deploy/Caddyfile, set the
+# hostname, run: caddy run --config deploy/Caddyfile
+# - Valid TLS: Caddy obtains/renews a certificate for the DNS name (needs inbound :80/:443 during
+#   issuance — a preparation step). An offline installation can use `tls /path/cert.pem /path/key.pem`.
+# - No third-party TLS-terminating tunnel/CDN without explicit organizer approval.
+# - The API binds 127.0.0.1:8000 only; Caddy is the single public entry point.
+
+{
+	# no admin endpoint on the network; telemetry-free by default in Caddy v2
+	admin localhost:2019
+	servers {
+		timeouts {
+			read_body   120s   # slow uploads of a ~300 MB MOV; spec budget for upload is 20 s target
+			read_header 15s
+			write       120s
+			idle        120s
+		}
+	}
+}
+
+cashwatch.example.org {
+	encode zstd gzip
+
+	# Upload ceiling above the supported payload (API enforces 256 MiB itself).
+	request_body {
+		max_size 300MB
+	}
+
+	# Never trust client-supplied timing/forwarding headers; the API records its own request start.
+	request_header -X-Request-Start
+	request_header -X-Forwarded-Host
+
+	reverse_proxy 127.0.0.1:8000 {
+		# Stream request bodies to the API as they arrive so its ingress clock starts with the request
+		# (no full buffering in the proxy), and stream responses.
+		request_buffers 0
+		response_buffers 0
+		flush_interval -1
+		header_up X-Forwarded-Proto {scheme}
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 130s
+			read_timeout 130s
+			write_timeout 130s
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+		-Server
+	}
+
+	# Access log without query strings or headers (X-API-Key is a header and is not logged by default).
+	log {
+		output file /var/log/caddy/cashwatch-access.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+			}
+		}
+	}
+}

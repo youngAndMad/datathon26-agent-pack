@@ -1,0 +1,76 @@
+# ============================================================================================
+#  SYNTHETIC TEST REGISTRY — NOT A LEGAL RULE SET.  test_only: true
+#  Loaded only with load_registry(..., allow_test=True) in explicit, visibly labeled test mode.
+#  Production startup refuses this file. TEST01 is a geometry fixture for a generated video
+#  (a red square leaves a yellow rectangle zone) used for a real-model synthetic end-to-end run.
+#  Its source is a FIXTURE file, not a normative act; the URL below is a placeholder required
+#  by the frozen RuleRef contract (pattern ^https://adilet.zan.kz/) and carries no legal meaning.
+# ============================================================================================
+
+registry_version: "test-2026-10-17.1"
+test_only: true
+label: "SYNTHETIC TEST"
+excerpts_file: sources/excerpts.test.yaml
+
+sources:
+  TEST:
+    kind: fixture
+    document_title: "ТЕСТОВОЕ ПРАВИЛО — не является нормой права"
+    authority: "Синтетический тестовый источник (не орган власти)"
+    document_date: "2026-10-17"
+    document_number: "TEST (не является нормативным правовым актом)"
+    official_url: "https://adilet.zan.kz/rus/docs/V1900019680"
+    snapshot_file: sources/TEST-fixture-synthetic.txt
+    snapshot_sha256: "dd739060eb0b438c5910643dbaedfbe981731cdaa0755f973d3714915cde7dab"
+    text_file: sources/TEST-fixture-synthetic.txt
+    text_sha256: "dd739060eb0b438c5910643dbaedfbe981731cdaa0755f973d3714915cde7dab"
+    retrieved_at: "2026-10-17T00:00:00Z"
+    edition_date: "2026-10-17"
+    edition_note: "Синтетический фикстурный файл; не является редакцией нормативного акта."
+    edition_verified: false
+    in_force: false
+
+rules:
+  - rule_id: TEST01
+    version: "1.0.0"
+    state: approved
+    disabled_reason: null
+    symbol: SYNTHETIC_MARKER_LEFT_ZONE
+    type_ru: "Синтетический тест: красный маркер покинул жёлтую зону"
+    source_id: TEST
+    clause: "TEST01 (синтетический тест)"
+    excerpt_ids: [TEST-fixture-1]
+    source_status:
+      clause_text: fixture
+      edition: fixture
+      applicability: fixture
+      local_visual_validation: fixture
+      notes: "Synthetic geometry only. Not a law."
+    last_verified: "2026-10-17"
+    paraphrase_ru: "Синтетическое правило: красный квадрат, находившийся внутри жёлтой зоны, полностью выходит за её пределы."
+    applicability_en:
+      - "Applies only to generated test videos with a red square and a yellow rectangle zone."
+    nonvisual_prerequisites_en: []
+    predicates:
+      - {predicate_id: TEST01.red_visible, kind: trigger, required_state: supported, question_en: "Is a red square visible in the frame?", counterexamples_en: ["A red shape that is not a square.", "Only a small red fragment at the frame edge."]}
+      - {predicate_id: TEST01.red_inside_zone, kind: trigger, required_state: supported, question_en: "Is the red square inside the yellow rectangle zone?", counterexamples_en: ["The red square only touches the yellow rectangle border from outside."]}
+      - {predicate_id: TEST01.red_outside_zone, kind: decisive, anchor: true, required_state: supported, question_en: "Is the red square fully outside the yellow rectangle zone (no part of it overlaps the yellow rectangle)?", counterexamples_en: ["The red square still partly overlaps the yellow rectangle."]}
+      - {predicate_id: TEST01.excl_ambiguous, kind: exclusion, required_state: not_supported, question_en: "Is the red square only partially visible, occluded or otherwise ambiguous, so that its position relative to the yellow rectangle cannot be determined?", counterexamples_en: []}
+    counterexamples_en:
+      - "The red square partly overlaps the yellow rectangle."
+      - "The red square is occluded."
+    boundary_notes_en:
+      - "The event is the transition: inside the yellow zone in an earlier frame, then fully outside in a later frame."
+    visibility_requirements_en:
+      - "Red square and yellow rectangle both visible."
+    temporal: {kind: transition, transition_from: TEST01.red_inside_zone, context_before_sec: 3.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_anchor_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: TEST01.v1
+      fact_ru: "красный квадрат полностью вышел за пределы жёлтой прямоугольной зоны"
+      interpretation_ru: "срабатывание синтетического тестового правила (не является нарушением норм права)"
+      predicate_ru: "красный квадрат сначала находился внутри жёлтой зоны, а затем полностью вне её"
+    limitations_ru:
+      - "СИНТЕТИЧЕСКИЙ ТЕСТ: результат не относится к реальным кассовым операциям."
+    approval: {owner: "agent-D-synthetic-fixture", date: "2026-10-17", validation_counts: null, notes: "test fixture only; no legal or real-domain validation"}

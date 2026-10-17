@@ -1,0 +1,12 @@
+;; macOS Seatbelt profile for the denied-egress verification (tests/offline/verify_offline.sh).
+;; Allows everything except outbound network; outbound is re-allowed only to loopback and to local
+;; unix-domain sockets. The mDNSResponder socket is denied too, so the process cannot resolve DNS
+;; names through the system resolver (DNS would otherwise leak hostnames via that daemon).
+;; Inbound listen/accept on loopback stays allowed (the API must serve the test client).
+;; Later rules take precedence over earlier ones.
+(version 1)
+(allow default)
+(deny network-outbound)
+(allow network-outbound (remote unix-socket))
+(allow network-outbound (remote ip "localhost:*"))
+(deny network-outbound (literal "/private/var/run/mDNSResponder"))

@@ -1,0 +1,234 @@
+captured_by: cashwatch.rules.capture
+retrieval_date: '2026-10-17'
+authority_note: adilet.zan.kz (incl. legacy old.adilet.zan.kz) only; retrieval date is not an effective date
+files:
+- source_id: L01
+  file: L01-2026-10-17.txt
+  derived_from: L01-2026-10-17.api.json
+  derivation: cashwatch.rules.sources.html_to_text(document.text_content)
+  bytes: 215007
+  sha256: 8a528e5b3dd5d4d750ca671764d6350dc29c6dee828013ba1dab552cf237c182
+  kind: derived_text
+- source_id: L01
+  url: https://adilet.zan.kz/api/documents/by-ngr/V1900019680?language=rus
+  canonical_url: https://adilet.zan.kz/rus/docs/V1900019680
+  retrieved_at: '2026-10-17T08:33:20Z'
+  http_status: 200
+  error: null
+  file: L01-2026-10-17.api.json
+  bytes: 274526
+  sha256: 206d01dbdb549c539736fe0907dd7e18f206b94074c527cbf222ac27c88aca36
+  kind: official_api_json
+- source_id: L01
+  url: https://old.adilet.zan.kz/rus/docs/V1900019680
+  retrieved_at: '2026-10-17T08:33:20Z'
+  http_status: 200
+  error: null
+  file: L01-2026-10-17.old.html
+  bytes: 306972
+  sha256: 46b670bb4eeadd7fd2105eb756a87586dc7724dc9abea6951b72609ccf6bdc98
+  kind: official_legacy_html
+- source_id: L01
+  url: https://old.adilet.zan.kz/rus/docs/V1900019680/info
+  retrieved_at: '2026-10-17T08:33:49Z'
+  http_status: 200
+  error: null
+  file: L01-2026-10-17.old-info.html
+  bytes: 44711
+  sha256: b0e3240b3e31e57d89dd79e0d61ea6518c5ab6658af169fae56bf2c130e72b8f
+  kind: official_legacy_html
+- source_id: L01
+  url: https://old.adilet.zan.kz/rus/docs/V1900019680/history
+  retrieved_at: '2026-10-17T08:34:20Z'
+  http_status: 200
+  error: null
+  file: L01-2026-10-17.old-history.html
+  bytes: 66946
+  sha256: 0e924097f17e9d3085d600577c85f976742a02aea7fcb49e1e045831ec1e5b99
+  kind: official_legacy_html
+- source_id: L02
+  file: L02-2026-10-17.txt
+  derived_from: L02-2026-10-17.api.json
+  derivation: cashwatch.rules.sources.html_to_text(document.text_content)
+  bytes: 72845
+  sha256: 5396db5727a623e4adf2e3202a972a32e3c34312bb3a902f357a6b1e258001d5
+  kind: derived_text
+- source_id: L02
+  url: https://adilet.zan.kz/api/documents/by-ngr/V2500037429?language=rus
+  canonical_url: https://adilet.zan.kz/rus/docs/V2500037429
+  retrieved_at: '2026-10-17T08:34:49Z'
+  http_status: 200
+  error: null
+  file: L02-2026-10-17.api.json
+  bytes: 100484
+  sha256: 63092cc26b977467e0295300bb11771124771e6c6d7b0b4d6e7fd9e3ec4002d7
+  kind: official_api_json
+- source_id: L02
+  url: https://old.adilet.zan.kz/rus/docs/V2500037429
+  retrieved_at: '2026-10-17T08:34:49Z'
+  http_status: 200
+  error: null
+  file: L02-2026-10-17.old.html
+  bytes: 123444
+  sha256: 1ba003fca21549187b34f638ee61964fadb6a79a2170183737649a7c6113752f
+  kind: official_legacy_html
+- source_id: L02
+  url: https://old.adilet.zan.kz/rus/docs/V2500037429/info
+  retrieved_at: '2026-10-17T08:35:18Z'
+  http_status: 200
+  error: null
+  file: L02-2026-10-17.old-info.html
+  bytes: 39448
+  sha256: c467617bc538a7b49351b0b3bbd17ff5fb68beb0f2507275332d7be47134768c
+  kind: official_legacy_html
+- source_id: L03
+  file: L03-2026-10-17.txt
+  derived_from: L03-2026-10-17.api.json
+  derivation: cashwatch.rules.sources.html_to_text(document.text_content)
+  bytes: 48561
+  sha256: 8e289c3dddee380e6b083708e8fdd47904ddfdb79f1b0f1c01b6770c7dab9d7b
+  kind: derived_text
+- source_id: L03
+  url: https://adilet.zan.kz/api/documents/by-ngr/V2200027073?language=rus
+  canonical_url: https://adilet.zan.kz/rus/docs/V2200027073
+  retrieved_at: '2026-10-17T08:35:45Z'
+  http_status: 200
+  error: null
+  file: L03-2026-10-17.api.json
+  bytes: 70691
+  sha256: f722cd9f0230540e134e13ba14ff21a08488c71b8b0ac9df540501e55c037f8a
+  kind: official_api_json
+- source_id: L04
+  file: L04-2026-10-17.txt
+  derived_from: L04-2026-10-17.api.json
+  derivation: cashwatch.rules.sources.html_to_text(document.text_content)
+  bytes: 95919
+  sha256: 3705c72fbf25a740d13345e42a7255886649b6030773e6df2a25b08c179f5321
+  kind: derived_text
+- source_id: L04
+  url: https://adilet.zan.kz/api/documents/by-ngr/V2600038217?language=rus
+  canonical_url: https://adilet.zan.kz/rus/docs/V2600038217
+  retrieved_at: '2026-10-17T08:35:46Z'
+  http_status: 200
+  error: null
+  file: L04-2026-10-17.api.json
+  bytes: 126926
+  sha256: 2322daff2e5708ed719e224092d9c9b8e5084381f3fde11fd8f215da1db7a8be
+  kind: official_api_json
+- source_id: L04
+  url: https://old.adilet.zan.kz/rus/docs/V2600038217/info
+  retrieved_at: '2026-10-17T08:35:46Z'
+  http_status: 200
+  error: null
+  file: L04-2026-10-17.old-info.html
+  bytes: 42354
+  sha256: 09f6f20a92425686e0f5fa8a60f1a9ac0e6f6874cd9dd76c778d7b6159767d52
+  kind: official_legacy_html
+- source_id: L05
+  file: L05-2026-10-17.txt
+  derived_from: L05-2026-10-17.api.json
+  derivation: cashwatch.rules.sources.html_to_text(document.text_content)
+  bytes: 37789
+  sha256: 2719a5c9ceef7e2bbec396df8122126e4ae70afc710d22ebb1a7d262482ae136
+  kind: derived_text
+- source_id: L05
+  url: https://adilet.zan.kz/api/documents/by-ngr/V2000020075?language=rus
+  canonical_url: https://adilet.zan.kz/rus/docs/V2000020075
+  retrieved_at: '2026-10-17T08:36:14Z'
+  http_status: 200
+  error: null
+  file: L05-2026-10-17.api.json
+  bytes: 53051
+  sha256: 5c160fd38adad53d505b9f4749cb02d09df6e13a40df2e741486a2856ee8bf7c
+  kind: official_api_json
+documents:
+  L01:
+    official_name: Постановление Правления Национального Банка Республики Казахстан от 29 ноября 2019 года № 231. Зарегистрировано в Министерстве юстиции Республики Казахстан 3 декабря 2019 года № 19680.
+    title_ru: Об утверждении Правил осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в банках второго уровня, филиалах банков-нерезидентов Республики Казахстан, Национальном операторе почты и юридических лицах, исключительной деятельностью которых является инкассация банкнот, монет и ценностей
+    status: upd
+    is_actual: true
+    adoption_number: '231'
+    adoption_date: '2019-12-02T18:00:00.000Z'
+    justice_reg_number: '19680'
+    justice_reg_date: '2019-12-02T18:00:00.000Z'
+    publication_reference: Эталонный контрольный банк НПА РК в электронном виде, 09.12.2019
+    publication_date: '2019-12-04T18:00:00.000Z'
+    start_date: '2019-11-28T18:00:00.000Z'
+    end_date: '2026-07-11T18:00:00.000Z'
+    updated_at: '2026-09-15T08:28:33.876Z'
+    group_number: V1900019680
+    developer_organ_names_ru:
+    - Национальный Банк Республики Казахстан
+    has_operative_text: true
+  L02:
+    official_name: Постановление Правления Национального Банка Республики Казахстан от 10 ноября 2025 года № 71. Зарегистрировано в Министерстве юстиции Республики Казахстан 18 ноября 2025 года № 37429
+    title_ru: О внесении изменений в некоторые постановления Правления Национального Банка Республики Казахстан по вопросам наличного денежного обращения и инкассации банкнот, монет и ценностей
+    status: new
+    is_actual: true
+    adoption_number: '71'
+    adoption_date: '2025-11-17T18:00:00.000Z'
+    justice_reg_number: '37429'
+    justice_reg_date: '2025-11-17T18:00:00.000Z'
+    publication_reference: Эталонный контрольный банк НПА РК в электронном виде, 20.11.2025
+    publication_date: '2025-11-18T18:00:00.000Z'
+    start_date: '2025-11-09T18:00:00.000Z'
+    end_date: '2025-11-09T18:00:00.000Z'
+    updated_at: '2026-09-15T03:43:23.240Z'
+    group_number: V2500037429
+    developer_organ_names_ru:
+    - Национальный Банк Республики Казахстан
+    has_operative_text: true
+  L03:
+    official_name: Постановление Правления Национального Банка Республики Казахстан от 28 февраля 2022 года № 19. Зарегистрировано в Министерстве юстиции Республики Казахстан 10 марта 2022 года № 27073
+    title_ru: О внесении изменений в некоторые постановления Правления Национального Банка Республики Казахстан по вопросам внедрения цифровых документов и признании утратившим силу постановления Правления Национального Банка Республики Казахстан от 31 января 2019 года № 18 "О внесении изменений в некоторые постановления Правления Национального Банка Республики Казахстан по вопросам организации охраны и устройства помещений банков и организаций, осуществляющих отдельные виды банковских операций, учета, хранения, перевозки и инкассации банкнот, монет и ценностей"
+    status: new
+    is_actual: true
+    adoption_number: '19'
+    adoption_date: '2022-03-09T18:00:00.000Z'
+    justice_reg_number: '27073'
+    justice_reg_date: ''
+    publication_reference: Эталонный контрольный банк НПА РК в электронном виде, 14.03.2022
+    publication_date: '2022-03-10T18:00:00.000Z'
+    start_date: '2022-02-27T18:00:00.000Z'
+    end_date: '2022-02-27T18:00:00.000Z'
+    updated_at: '2026-08-27T11:56:16.908Z'
+    group_number: V2200027073
+    developer_organ_names_ru:
+    - Национальный Банк Республики Казахстан
+    has_operative_text: true
+  L04:
+    official_name: Постановление Правления Национального Банка Республики Казахстан от 16 марта 2026 года № 25. Зарегистрировано в Министерстве юстиции Республики Казахстан 27 марта 2026 года № 38217.
+    title_ru: О внесении изменений и дополнений в некоторые постановления Правления Национального Банка Республики Казахстан по вопросам наличного денежного обращения и признании утратившими силу некоторых постановлений Правления Национального Банка Республики Казахстан
+    status: upd
+    is_actual: true
+    adoption_number: '25'
+    adoption_date: '2026-03-26T18:00:00.000Z'
+    justice_reg_number: '38217'
+    justice_reg_date: '2026-03-26T18:00:00.000Z'
+    publication_reference: Эталонный контрольный банк НПА РК в электронном виде, 08.04.2026
+    publication_date: '2026-04-06T18:00:00.000Z'
+    start_date: '2026-03-15T18:00:00.000Z'
+    end_date: '2026-06-29T18:00:00.000Z'
+    updated_at: '2026-09-15T08:28:33.876Z'
+    group_number: V2600038217
+    developer_organ_names_ru:
+    - Национальный Банк Республики Казахстан
+    has_operative_text: true
+  L05:
+    official_name: Постановление Правления Национального Банка Республики Казахстан от 24 февраля 2020 года № 14. Зарегистрировано в Министерстве юстиции Республики Казахстан 27 февраля 2020 года № 20075.
+    title_ru: Об утверждении Правил организации охраны и устройства помещений банков второго уровня, филиалов банков-нерезидентов Республики Казахстан, Национального оператора почты, юридических лиц, исключительной деятельностью которых является инкассация банкнот, монет и ценностей, и юридических лиц, осуществляющих деятельность исключительно через обменные пункты на основании лицензии Национального Банка Республики Казахстан на обменные операции с наличной иностранной валютой
+    status: upd
+    is_actual: true
+    adoption_number: '14'
+    adoption_date: '2020-02-26T18:00:00.000Z'
+    justice_reg_number: '20075'
+    justice_reg_date: '2020-02-26T18:00:00.000Z'
+    publication_reference: Эталонный контрольный банк НПА РК в электронном виде, 02.03.2020
+    publication_date: '2020-02-26T18:00:00.000Z'
+    start_date: '2020-02-23T18:00:00.000Z'
+    end_date: '2024-12-23T18:00:00.000Z'
+    updated_at: '2026-09-14T21:35:30.958Z'
+    group_number: V2000020075
+    developer_organ_names_ru:
+    - Национальный Банк Республики Казахстан
+    has_operative_text: true

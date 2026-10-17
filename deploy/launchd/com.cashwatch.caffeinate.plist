@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Prevent idle/system sleep while judging (macOS). caffeinate -i (idle), -s (system, on AC),
+     -m (disk). Display may sleep. Also set: sudo pmset -c sleep 0 disksleep 0 ; keep the lid open or
+     use clamshell mode on AC with an external display; disable "Low Power Mode" on AC.
+     Load: launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cashwatch.caffeinate.plist -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.cashwatch.caffeinate</string>
+  <key>ProgramArguments</key>
+  <array><string>/usr/bin/caffeinate</string><string>-ims</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+</dict>
+</plist>
