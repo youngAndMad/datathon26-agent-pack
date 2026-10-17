@@ -70,7 +70,7 @@ def test_all_cw_templates_render_without_forbidden_words(tmp_path):
     d = S.copy_rules(tmp_path)
     S.edit_registry(d / "registry.yaml", lambda data: [S.approve_fully(r) for r in data["rules"]])
     reg = load_registry(d / "registry.yaml", require_approved=True)
-    assert reg.approved_rule_ids() == [f"CW0{i}" for i in range(1, 10)], reg.health_errors()
+    assert reg.approved_rule_ids() == sorted(r.rule_id for r in reg._data.rules), reg.health_errors()
     for rid in reg.approved_rule_ids():
         spec, ref = reg.rule(rid), reg.rule_ref(rid)
         s = render_description(spec, ref, spec.explanation.fact_ru, 3.0)
