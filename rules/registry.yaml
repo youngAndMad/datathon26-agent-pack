@@ -1,6 +1,7 @@
 # cashwatch PRODUCTION rule registry (owner: agent D).
 #
-# Every rule here is DISABLED. Source text for each clause was captured from the official
+# Only CW11/CW12 retain existing owner authorization; other rules are disabled. Source text
+# for each clause was captured from the official
 # ИПС «Әділет» (adilet.zan.kz) on 2026-10-17 and is stored offline in rules/sources/ with
 # sha256 hashes; excerpts are verbatim slices (rules/sources/excerpts.yaml).
 # A rule may become `approved` only after: verified applicability/scope, positive + negative +
@@ -11,7 +12,7 @@
 # Field semantics: see src/cashwatch/rules/schema.py. Predicate text is neutral, visual, English
 # (sent to the local model); Russian explanation fragments are fixed templates (no model prose).
 
-registry_version: "prod-2026-10-17.1"
+registry_version: "prod-2026-10-17.2"
 test_only: false
 label: "PRODUCTION"
 excerpts_file: sources/excerpts.yaml
@@ -554,7 +555,7 @@ rules:
     approval: {owner: null, date: null, validation_counts: null, notes: "candidate"}
 
   - rule_id: CW11
-    version: "0.2.0"
+    version: "0.3.0"
     state: approved
     disabled_reason: null
     symbol: PRIOR_CASH_ON_DESK_NEXT_CLIENT
@@ -568,12 +569,13 @@ rules:
     applicability_en: ["Two different clients are served one after another at the same cash desk."]
     nonvisual_prerequisites_en: []
     predicates:
-      - {predicate_id: CW11.client_change, kind: trigger, required_state: supported, question_en: "Does one client leave the cash desk and/or a new client arrive and sit down at the desk?", counterexamples_en: ["The same client stands up briefly and sits back down."]}
-      - {predicate_id: CW11.prior_cash_on_desk, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame is a new client at the desk while banknotes or cash bundles that were already on the desk before this client arrived are still lying on the desk (not put into the safe, drawer or cabinet)?", counterexamples_en: ["The cash on the desk was just handed over by the current client.", "Only papers or documents lie on the desk."]}
-      - {predicate_id: CW11.desk_visible, kind: visibility, required_state: supported, question_en: "Is the desk surface visible during the client change?", counterexamples_en: []}
+      - {predicate_id: CW11.client_change, kind: trigger, required_state: supported, question_en: "Does service of one client visibly end and service of a different client visibly begin, shown by a cash or document exchange with the cashier? Arrival, sitting down or waiting alone is not service. Use unknown if the sequence cannot be established without identifying people.", counterexamples_en: ["The same client stands up briefly and sits back down.", "A person arrives or waits but is not served.", "The cashier leaves the desk without starting service of a different client."]}
+      - {predicate_id: CW11.prior_cash_on_desk, kind: decisive, anchor: true, required_state: supported, question_en: "In which supplied frames is the cashier visibly serving the next client while the same banknotes received from the previous client remain openly on the desk? Establish the previous receipt and continuity of that cash from the visible sequence. An unidentified initial pile or not seeing storage is not proof; use unknown if ownership, continuity or cash versus paper is unclear.", counterexamples_en: ["The cash on the desk was just handed over by the current client.", "Only papers or documents lie on the desk.", "The earlier cash was visibly stored before the next service."]}
+      - {predicate_id: CW11.desk_visible, kind: visibility, required_state: supported, question_en: "Are the desk, cash and service interaction visible well enough across the client change to establish the same earlier cash remains when the next service starts? Use unknown if occlusion or sampling gaps prevent following the cash.", counterexamples_en: []}
       - {predicate_id: CW11.excl_current_or_paper, kind: exclusion, required_state: not_supported, question_en: "Are the items on the desk only documents/paper, or cash belonging to the current client?", counterexamples_en: []}
+      - {predicate_id: CW11.excl_prior_cash_stored, kind: exclusion, required_state: not_supported, question_en: "Before the next client's service begins, is the earlier cash visibly placed into a safe, drawer, cabinet or other storage device, so it is no longer the batch remaining on the desk? Use unknown if the transfer or batch continuity cannot be seen; absence of a visible transfer is not proof that cash stayed on the desk. Do not infer whether storage is locked.", counterexamples_en: ["The safe opens but the earlier cash visibly remains on the desk.", "An unrelated item is put away."]}
     counterexamples_en: ["Previous client's cash put into the safe before the next client arrives.", "Current client's own cash on the desk."]
-    boundary_notes_en: ["Anchor at the first frame where the next client is at the desk with the earlier cash still on it."]
+    boundary_notes_en: ["Anchor only at a cited frame showing actual service of the next client with the earlier cash still on the desk; arrival alone is not the anchor.", "An unknown storage exclusion cannot establish cash continuity. The decisive and visibility predicates must independently support the same earlier batch remaining."]
     visibility_requirements_en: ["Desk visible from the first client's departure to the next client's arrival."]
     temporal: {kind: state, transition_from: null, context_before_sec: 6.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
     anchor_convention: first_anchor_supported
@@ -584,10 +586,10 @@ rules:
       interpretation_ru: "нахождение на рабочем месте наличных, не относящихся к текущему клиенту"
       predicate_ru: "ранее принятые наличные не убраны в запираемое устройство хранения до начала обслуживания следующего клиента"
     limitations_ru: ["Принадлежность наличных конкретному клиенту оценивается только по видимой последовательности."]
-    approval: {owner: "project owner (D014)", date: "2026-10-17", validation_counts: {positive: 1, negative: 19, unknown: 0, dataset_note: "organizer open set open.zip, 41 unique clips, in-sample (no held-out split): fired on 1 violation clip, 0 clean clips"}, notes: "Approved on in-sample evaluation run final1; re-validate on new angle/held-out data."}
+    approval: {owner: "project owner (D014)", date: "2026-10-17", validation_counts: {positive: 1, negative: 19, unknown: 0, dataset_note: "Historical v0.2.0 only: organizer open set open.zip, 41 unique clips, in-sample (no held-out split): fired on 1 violation clip, 0 clean clips. These counts do not validate v0.3.0."}, notes: "Existing rule authorization retained from D014. Version 0.3.0 service/continuity wording and storage exclusion require fresh local evaluation; no new accuracy claim."}
 
   - rule_id: CW12
-    version: "0.3.0"
+    version: "0.4.0"
     state: approved
     disabled_reason: null
     symbol: STAFF_PERSONAL_ITEMS
@@ -601,12 +603,12 @@ rules:
     applicability_en: ["Items of the cashier (not of the client) at the cash desk."]
     nonvisual_prerequisites_en: ["Ownership is inferred only from who places/uses the item."]
     predicates:
-      - {predicate_id: CW12.personal_item_action, kind: trigger, required_state: supported, question_en: "Does the cashier put a handbag, purse, coat or drink on the desk, drink or eat, or hold or use a mobile phone?", counterexamples_en: ["The client holds a phone or bag.", "The cashier uses the desk telephone, laptop, counting machine or a calculator."]}
-      - {predicate_id: CW12.personal_item_present, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame is a personal item of the cashier visible at the cash desk: a handbag, purse, coat, a cup/bottle/can she drinks from, food, or a smartphone in her hand?", counterexamples_en: ["Bank collection/cash bags (green or grey bags with tags/seals) are bank property, not personal items.", "Bank equipment: counting machine, laptop, desk phone, scanner, calculator, lamp.", "Items belonging to the client."]}
+      - {predicate_id: CW12.personal_item_action, kind: trigger, required_state: supported, question_en: "Does the cashier visibly place, hold, wear, drink from or use the same identifiable personal item at the work position (bag, purse, coat, food, drink or mobile phone)? Cite the action frames. Mere proximity to a person or the desk does not establish whose item it is; use unknown when association with the cashier is unclear.", counterexamples_en: ["The client holds a phone or bag.", "The cashier uses the desk telephone, laptop, counting machine or a calculator.", "The cashier briefly transfers a client's item as part of service."]}
+      - {predicate_id: CW12.personal_item_present, kind: decisive, anchor: true, required_state: supported, question_en: "In which supplied frames is that same clearly personal item visibly at the cashier's work position, with its association to the cashier established by visible placement, holding or use? Do not infer ownership from appearance, proximity or another person's presence. Use unknown for an indistinct object or an item that may be bank equipment or the client's property.", counterexamples_en: ["Collection/cash bags with tags or seals are not established as personal property by their color.", "Bank equipment: counting machine, laptop, desk phone, scanner, calculator, lamp.", "Items belonging to the client."]}
       - {predicate_id: CW12.desk_visible, kind: visibility, required_state: supported, question_en: "Are the cashier and the desk clearly visible?", counterexamples_en: []}
-      - {predicate_id: CW12.excl_client_or_equipment, kind: exclusion, required_state: not_supported, question_en: "Is the item actually bank property or the client's: a green or grey bank collection/cash bag, cash bundles, documents, the counting machine, laptop, desk phone, calculator, or the client's own phone or bag?", counterexamples_en: []}
+      - {predicate_id: CW12.excl_client_or_equipment, kind: exclusion, required_state: not_supported, question_en: "Does visible use or transfer establish the same item as bank equipment, cash-handling material or the client's property, such as counting equipment, cash bundles, documents or a client's phone/bag? Assess collection bags from visible tags, seals and handling context, never color alone. Use unknown when the item's role or ownership is unclear.", counterexamples_en: ["Bag color alone does not establish bank property or personal ownership."]}
     counterexamples_en: ["Client's phone or bag.", "Bank equipment on the desk."]
-    boundary_notes_en: ["Anchor at the first frame where the cashier's personal item is clearly visible at the desk."]
+    boundary_notes_en: ["Anchor at a cited frame where the same personal item is clearly visible and its association with the cashier is established by visible action.", "A different person at the desk or the cashier leaving does not establish a personal item. Check this rule independently of other possible events."]
     visibility_requirements_en: ["Cashier and desk visible."]
     temporal: {kind: state, transition_from: null, context_before_sec: 3.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
     anchor_convention: first_anchor_supported
@@ -617,7 +619,7 @@ rules:
       interpretation_ru: "нахождение личных вещей работника в кассовом узле"
       predicate_ru: "личный предмет кассира находится на рабочем месте или используется им"
     limitations_ru: ["Наличие у телефона функции фото/видеофиксации по видео не устанавливается."]
-    approval: {owner: "project owner (D014)", date: "2026-10-17", validation_counts: {positive: 6, negative: 16, unknown: 0, dataset_note: "organizer open set open.zip, 41 unique clips, in-sample (no held-out split): fired on 6 violation clips, 3 clean clips (precision 0.67)"}, notes: "Approved on in-sample evaluation run final1; re-validate on new angle/held-out data."}
+    approval: {owner: "project owner (D014)", date: "2026-10-17", validation_counts: {positive: 6, negative: 16, unknown: 0, dataset_note: "Historical v0.3.0 only: organizer open set open.zip, 41 unique clips, in-sample (no held-out split): fired on 6 violation clips, 3 clean clips (precision 0.67). These counts do not validate v0.4.0."}, notes: "Existing rule authorization retained from D014. Version 0.4.0 explicit cashier-item association wording requires fresh local evaluation; no new accuracy claim."}
 
   - rule_id: CW13
     version: "0.2.0"
@@ -653,7 +655,7 @@ rules:
     approval: {owner: null, date: null, validation_counts: null, notes: "candidate"}
 
   - rule_id: CW14
-    version: "0.2.0"
+    version: "0.3.0"
     state: disabled
     disabled_reason: "Кандидат: оценивается на открытом обучающем наборе (D012)."
     symbol: COUNT_AFTER_CLIENT_LEFT
@@ -667,13 +669,14 @@ rules:
     applicability_en: ["Cash handed over by a client during this clip is being counted."]
     nonvisual_prerequisites_en: []
     predicates:
-      - {predicate_id: CW14.client_handover, kind: trigger, required_state: supported, question_en: "Does a client hand cash to the cashier, after which the cashier counts it by hand or with the counting machine?", counterexamples_en: ["The cashier counts cash alone with no client in this clip."]}
-      - {predicate_id: CW14.client_gone_while_counting, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame is the cashier still counting that client's cash (by hand or in the counting machine) while the client has stood up and is leaving or is gone?", counterexamples_en: ["The client is still sitting at the desk.", "Counting finished before the client left."]}
-      - {predicate_id: CW14.area_visible, kind: visibility, required_state: supported, question_en: "Are both the cashier's hands/counting machine and the client's place visible?", counterexamples_en: []}
-      - {predicate_id: CW14.excl_internal, kind: exclusion, required_state: not_supported, question_en: "Is this internal counting by the cashier alone with no client handing over cash in this clip?", counterexamples_en: []}
-    counterexamples_en: ["Internal counting with no client.", "Client leaves after counting is complete."]
-    boundary_notes_en: ["Anchor at the first frame where the client leaves while counting continues."]
-    visibility_requirements_en: ["Counting area and client place visible."]
+      - {predicate_id: CW14.client_handover, kind: trigger, required_state: supported, question_en: "Is a client's transfer of banknotes to the cashier visibly followed by counting of the same received batch, by hand or with a counting machine? Establish continuity from the transfer; use unknown if the batch origin or whether counting has started is unclear.", counterexamples_en: ["An initial cash pile has no visible connection to a client receipt.", "The cashier handles papers or rearranges a bundle without visibly counting it."]}
+      - {predicate_id: CW14.client_gone_while_counting, kind: decisive, anchor: true, required_state: supported, question_en: "In which supplied frames does counting of that same received cash visibly continue after the client has actually departed the visible service area? Standing up or moving within the service area is not absence. Cite frames showing ongoing counting and departure context; use unknown if the client could still be present outside the view or cash continuity is unclear.", counterexamples_en: ["The client stands but remains next to the counter.", "Counting finished before the client left.", "Only an empty chair is visible; the rest of the customer area is hidden."]}
+      - {predicate_id: CW14.area_visible, kind: visibility, required_state: supported, question_en: "Are the cash/counting activity and the relevant customer service area visible well enough to establish actual client departure while counting continues? An empty chair or a cropped customer view alone is insufficient; use unknown if the client may remain in an unseen part of the service area.", counterexamples_en: []}
+      - {predicate_id: CW14.excl_internal, kind: exclusion, required_state: not_supported, question_en: "Does the visible sequence establish internal counting or counting of a different batch rather than continued counting of the cash just received from this client? Use unknown if the origin is unclear; not seeing a handover alone does not prove internal counting.", counterexamples_en: []}
+      - {predicate_id: CW14.excl_count_finished, kind: exclusion, required_state: not_supported, question_en: "Does the visible sequence show counting of the received batch finished before the client departed, with later activity only bundling, storing, handing over cash or handling documents? Use unknown if completion or the later activity cannot be distinguished.", counterexamples_en: []}
+    counterexamples_en: ["Internal counting with no established client receipt.", "Client leaves after counting is complete.", "Client stands or moves but remains at the counter."]
+    boundary_notes_en: ["Anchor only at a cited frame showing continuing counting after actual departure, not at standing up or at the window start.", "Keep the prior receipt and departure context; an empty chair cannot establish absence from an unseen customer area."]
+    visibility_requirements_en: ["Counting area and relevant customer service area visible across departure."]
     temporal: {kind: action, transition_from: null, context_before_sec: 6.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
     anchor_convention: first_anchor_supported
     evidence_strategy: anchor_then_context

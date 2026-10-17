@@ -216,6 +216,10 @@ def _assessments(raw: list[RawAssessment], predicate_ids: list[str], ctx: _Ctx, 
         sup = ctx.frame_ids(a.supporting_frame_ids, f"{w}.supporting_frame_ids")
         con = ctx.frame_ids(a.contradicting_frame_ids, f"{w}.contradicting_frame_ids")
         reason = ctx.text(a.visible_reason, P.MAX_REASON_CHARS, f"{w}.visible_reason")
+        if set(sup) & set(con):
+            state = "unknown"
+            reason = "conflicting compact frame evidence"
+            ctx.notes.append(f"{a.predicate_id}: conflicting frame evidence downgraded to unknown")
         if state == "supported" and not sup:
             state = "unknown"
             ctx.notes.append(f"{a.predicate_id}: supported without frame ids downgraded to unknown")
@@ -420,8 +424,8 @@ def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str],
                     raise OutputInvalid("malformed compact answer")
                 seen.add(match.group(1))
                 refs = match.group(2) or ""
-                if match.group(1) == "yes" and not refs:
-                    raise OutputInvalid("verification yes requires frame references")
+                if not refs:
+                    raise OutputInvalid("verification yes/no requires frame references")
                 if any(not 1 <= int(x) <= n for x in re.findall(r"\d+", refs)):
                     raise OutputInvalid("compact frame reference outside request")
                 for lo, hi in re.findall(r"(\d+)\s*[-–]\s*(\d+)", refs):
@@ -449,17 +453,47 @@ def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str],
             yes = list(range(1, n + 1))  # coarse proposal only; anchors come from verification
         yes_ids = [frames[i - 1].frame_id for i in yes]
         no_ids = [frames[i - 1].frame_id for i in no if i not in yes]
-        if said_no and not no_ids and not said_yes and not yes_without_frames_is_window:
-            no_ids = [f.frame_id for f in frames]  # verify: plain "no" = false across the window
         if yes_ids:
             ts_ = [frames[i - 1].relative_sec for i in yes]
             out.append(PredicateAssessment(predicate_id=pid, state="supported", supporting_frame_ids=yes_ids,
                                            contradicting_frame_ids=no_ids, interval_start_sec=min(ts_),
                                            interval_end_sec=max(ts_), visibility="clear", reasoning_note="yes"))
-        elif no_ids or (said_no and not said_yes):
+        elif no_ids or (yes_without_frames_is_window and said_no and not said_yes):
             out.append(PredicateAssessment(predicate_id=pid, state="contradicted", contradicting_frame_ids=no_ids,
                                            visibility="clear", reasoning_note="no"))
         else:
             out.append(PredicateAssessment(predicate_id=pid, state="unknown", visibility="partial",
                                            reasoning_note="yes without frames" if said_yes else "unclear"))
     return out
+
+
+def parse_partial_verification(text: str, *, frames: list[FrameRef],
+                               predicate_ids: list[str]) -> list[PredicateAssessment] | None:
+    """Salvage individually valid rows without inventing evidence for incomplete rows.
+
+    Unlike coarse proposal parsing this enforces the verification grammar per row.
+    Duplicate answers remain unknown, even if one of them happens to be valid.
+    None means there was no valid answer at all; explicit unclear is a valid answer.
+    """
+    rows: dict[int, list[str]] = {}
+    for line in text.splitlines():
+        match = _CUE_LINE.match(line)
+        if match and 1 <= int(match.group(1)) <= len(predicate_ids):
+            rows.setdefault(int(match.group(1)), []).append(match.group(2))
+    out = []
+    valid = False
+    for q, pid in enumerate(predicate_ids, 1):
+        assessment = PredicateAssessment(predicate_id=pid, state="unknown", visibility="partial",
+                                         reasoning_note="missing or invalid compact answer")
+        answers = rows.get(q, [])
+        if len(answers) == 1:
+            try:
+                assessment = parse_cues("Q1: " + answers[0], frames=frames,
+                                        predicate_ids=[pid], strict=True)[0]
+                valid = True
+            except OutputInvalid:
+                pass
+        elif len(answers) > 1:
+            assessment = assessment.model_copy(update={"reasoning_note": "conflicting compact frame evidence"})
+        out.append(assessment)
+    return out if valid else None

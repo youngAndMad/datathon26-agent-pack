@@ -46,10 +46,11 @@ from cashwatch.dto import (
 )
 from cashwatch.errors import PipelineError
 from cashwatch.pipeline.planner import (
-    CoverageLedger, build_plan, proposal_windows, refinement_times, select_tier, select_verification_frames,
+    CoverageLedger, build_plan, proposal_windows, anchored_refinement_times, select_tier, select_verification_frames,
 )
 from cashwatch.pipeline.validate import project_jury_result, validate_result
 from cashwatch.pipeline.diagnostics import DiagnosticCounters
+from cashwatch.pipeline.detail import desk_roi_config, add_desk_crops, crop_context_note
 from cashwatch.ports import MediaPort, PerceptionPort, ReportingPort, RuleRegistry, RulesPort
 
 log = logging.getLogger("cashwatch.pipeline")
@@ -320,16 +321,29 @@ def analyze_job(
                 diagnostics.bump("candidates_unverified", rule=pending.rule_id)
             diagnostics.emit("verifying")
             break
-        times = refinement_times(cand.start_sec, cand.end_sec, sampling, meta)
+        times = anchored_refinement_times(cand, list(frames_by_id.values()), sampling, meta)
         rframes = ctx.media.frames_for_times(
             source, meta, times, work_dir,
             long_side_px=int(sampling.get("refine_long_side_px", sampling["model_long_side_px"])), deadline=deadline)
+        focus = frames_by_id.get(cand.anchor_frame_id)
+        focused = sampling.get("anchor_refinement", {}).get("enabled", False)
+        roi_cfg = desk_roi_config(sampling, cand.rule_id)
+        frame_cap = int(sampling["max_refinement_frames"])
+        crop_slots = min(2, frame_cap // 4) if roi_cfg else 0
         rframes = select_verification_frames(
-            cand, list(frames_by_id.values()), rframes, int(sampling["max_refinement_frames"]))
+            cand, list(frames_by_id.values()), rframes, frame_cap - crop_slots,
+            focus_sec=focus.relative_sec if focused and focus else None)
+        if roi_cfg and crop_slots:
+            rframes = add_desk_crops(ctx.media, source, meta, work_dir, rframes, cand, roi_cfg,
+                                    crop_slots, int(sampling.get("refine_long_side_px", sampling["model_long_side_px"])),
+                                    deadline)
         for f in rframes:
             all_frames[f.frame_id] = f
         vreq = rules.build_verification(cand, rframes, job_id=job.job_id,
                                         max_output_tokens=int(sampling["verify_max_new_tokens"]))
+        crop_note = crop_context_note(vreq.frames)
+        if crop_note:
+            vreq = vreq.model_copy(update={"boundary_notes_en": vreq.boundary_notes_en + [crop_note]})
         tv = time.monotonic()
         diagnostics.bump("verification_attempted", rule=cand.rule_id)
         diagnostics.emit("verifying")
@@ -432,6 +446,10 @@ def _covered_by_accepted(cand: CandidateEvent, decided: list[CandidateEvent]) ->
     span = max(cand.end_sec - cand.start_sec, 1e-6)
     for d in decided:
         if d.review_state != "accepted" or d.rule_id != cand.rule_id:
+            continue
+        if not cand.anchor_frame_id or cand.anchor_frame_id != d.anchor_frame_id:
+            # Interval containment alone may cover a distinct action. Only skip
+            # a redundant proposal anchored to the same verified source frame.
             continue
         # Context viewed around an event is not evidence that another event in
         # that context was already verified. Only the accepted interval counts.

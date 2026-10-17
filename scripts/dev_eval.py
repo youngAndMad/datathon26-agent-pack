@@ -327,7 +327,10 @@ def configuration_fingerprint(settings, registry_path: Path) -> dict:
             "model_configuration_sha256": model_files,
             "evaluator_sha256": sha256(Path(__file__)),
             "inference_code_sha256": {name: sha256(ROOT / "src" / "cashwatch" / "inference" / name)
-                for name in ("prompts.py", "adapter.py")},
+                for name in ("prompts.py", "adapter.py", "validation.py")},
+            "decision_code_sha256": {name: sha256(ROOT / "src" / "cashwatch" / name)
+                for name in ("rules/engine.py", "pipeline/analyze.py", "pipeline/planner.py",
+                             "pipeline/detail.py", "media/roi.py")},
             "backend": settings.backend, "device": settings.device,
             "weights_verified_by_this_evaluator": False}
 

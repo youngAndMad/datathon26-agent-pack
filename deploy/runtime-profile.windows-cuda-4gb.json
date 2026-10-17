@@ -1,0 +1,32 @@
+{
+  "profile_id": "windows-cuda-nf4-4gb-384px-experimental-v2-grounded",
+  "status": "experimental_synthetic_timing_only",
+  "derived_from": "configs/runtime-profile.json; isolated Windows RTX 3050 4 GiB experiment",
+  "sampling": {
+    "window_sec": 12,
+    "overlap_sec": 3,
+    "uniform_fps": 0.6,
+    "max_frames_per_observation": 8,
+    "model_long_side_px": 384,
+    "motion_proposal_fps": 4,
+    "motion_top_k": 0,
+    "refinement_radius_sec": 3,
+    "refinement_fps": 1,
+    "max_refinement_frames": 8,
+    "refine_long_side_px": 384,
+    "max_candidates_refined": 3,
+    "anchor_refinement": {"enabled": true, "radius_sec": 2, "fps": 4},
+    "max_visual_tokens": null,
+    "observe_max_new_tokens": 128,
+    "verify_max_new_tokens": 192
+  },
+  "sampling_tiers": [
+    {"tier_id": "w12", "est_window_sec": 50},
+    {"tier_id": "w24", "window_sec": 24, "est_window_sec": 50},
+    {"tier_id": "w48", "window_sec": 48, "est_window_sec": 50},
+    {"tier_id": "w80", "window_sec": 80, "est_window_sec": 50}
+  ],
+  "evidence": {"long_side_px": 1280, "jpeg_quality": 88, "max_frames_per_event": 3},
+  "budget_sec": {"probe": 20, "observe_total": 160, "verify_total": 75, "evidence": 15, "soft_margin": 30},
+  "measurements_note": "Observe synthetic 8 frames at 384px, 128 output budget: 40.922s, n=1, repaired output. 50s is a provisional planning margin, not a validated bound. Domain quality and five-minute completion unqualified. Long clips use sparser sampling; short actions may be missed. Shared defaults and deadlines are unchanged."
+}

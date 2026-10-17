@@ -300,12 +300,14 @@ class Rules:
     # ------------------------------------------------------------------ merge
     def merge(self, accepted: list[CandidateEvent], frames: list[FrameRef]) -> list[AcceptedEvent]:
         times = {f.frame_id: f.relative_sec for f in frames}
+        sources = {f.frame_id: f.source_sha256 for f in frames}
         approved = set(self._reg.approved_rule_ids())
         items: list[CandidateEvent] = []
         for c in accepted:
             if (c.review_state != "accepted" or c.rule_id not in approved or c.anchor_frame_id not in times
                     or not c.evidence_frame_ids or any(i not in times for i in c.evidence_frame_ids)
-                    or c.rule_version != self._reg.rule(c.rule_id).version):
+                    or c.rule_version != self._reg.rule(c.rule_id).version
+                    or any(sources[i] != sources[c.anchor_frame_id] for i in c.evidence_frame_ids)):
                 self._note("technical", c.start_sec, c.end_sec,
                            f"Кандидат {c.candidate_id} исключён при объединении: не прошёл повторную проверку")
                 continue
@@ -313,18 +315,25 @@ class Rules:
         clusters: list[list[CandidateEvent]] = []
         for c in sorted(items, key=lambda c: (c.rule_id, times[c.anchor_frame_id], c.candidate_id)):
             rule = self._reg.rule(c.rule_id)
-            target = None
-            for cl in clusters:
-                if cl[0].rule_id != c.rule_id:
-                    continue
-                s, e = min(x.start_sec for x in cl), max(x.end_sec for x in cl)
-                if c.start_sec <= e and s <= c.end_sec and not _reset_between(rule, cl + [c], times):
-                    target = cl
-                    break
-            if target is None:
-                clusters.append([c])
-            else:
-                target.append(c)
+            # A later window can bridge two clusters. Consume every connected
+            # cluster, not just the first match. Context frames alone do not
+            # identify an occurrence: nearby actions often share context.
+            merged = [c]
+            changed = True
+            while changed:
+                changed = False
+                remaining = []
+                for cl in clusters:
+                    if (cl[0].rule_id == c.rule_id
+                            and sources[cl[0].anchor_frame_id] == sources[c.anchor_frame_id]
+                            and any(_same_occurrence(rule, x, y) for x in cl for y in merged)
+                            and not _reset_between(rule, cl + merged, times)):
+                        merged.extend(cl)
+                        changed = True
+                    else:
+                        remaining.append(cl)
+                clusters = remaining
+            clusters.append(merged)
 
         events: list[tuple[float, AcceptedEvent]] = []
         for cl in clusters:
@@ -332,7 +341,8 @@ class Rules:
             first = min(cl, key=lambda x: (times[x.anchor_frame_id], x.candidate_id))
             anchor = first.anchor_frame_id
             ev_ids: list[str] = [anchor]
-            for x in [first] + [y for y in cl if y is not first]:
+            for x in [first] + sorted((y for y in cl if y is not first),
+                                     key=lambda y: (times[y.anchor_frame_id], y.candidate_id)):
                 for i in x.evidence_frame_ids:
                     if i not in ev_ids and len(ev_ids) < 3:
                         ev_ids.append(i)
@@ -351,6 +361,27 @@ class Rules:
 
 
 # ---------------------------------------------------------------------- helpers
+
+def _same_occurrence(rule: RuleSpec, left: CandidateEvent, right: CandidateEvent) -> bool:
+    """Require overlapping accepted intervals or shared decisive evidence.
+
+    Intervals have already been narrowed by ``decide``; proposal windows must
+    never reach this function. There is deliberately no distance-only rule.
+    """
+    if left.start_sec <= right.end_sec and right.start_sec <= left.end_sec:
+        return True
+    ap = rule.anchor_predicate
+    if ap is None:
+        return False
+
+    def decisive_frames(candidate: CandidateEvent) -> set[str]:
+        return {fid for a in candidate.assessments
+                if a.predicate_id == ap.predicate_id and a.state == "supported"
+                for fid in a.supporting_frame_ids
+                if fid in candidate.evidence_frame_ids}
+
+    return bool(decisive_frames(left) & decisive_frames(right))
+
 
 def _unknown(a: PredicateAssessment) -> PredicateAssessment:
     return a.model_copy(update={"state": "unknown"})

@@ -250,6 +250,7 @@ Do not identify people, infer intent or authorization, or give legal conclusions
 For EACH statement write one line, in order, in this format and nothing else:
 Q<number>: yes <frames where it is true>; no <frames where it is false>
 Use integers or ranges like 3-9. Statements may be true in some frames and false in others: list both parts.
+Every yes and every no MUST name specific supplied frame numbers. Never substitute the first frame or all frames for missing evidence. If you cannot identify supporting or contradicting frames, answer unclear. Do not interpret an unseen action as an absent action.
 Write "Q<number>: unclear" only if it cannot be seen in any frame."""
 
 VERIFY_COMPACT_USER_TEMPLATE = """Frames 1 to {n}, in time order ({gaps}):

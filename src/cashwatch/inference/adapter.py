@@ -30,7 +30,9 @@ from cashwatch.errors import PipelineError
 from cashwatch.inference import prompts as P
 from cashwatch.inference.protocol import GenRequest, GenResult
 from cashwatch.inference.supervisor import GenCrashed, GenError, GenLoadFailed, GenOOM, GenTimeout
-from cashwatch.inference.validation import OutputInvalid, parse_cues, parse_observation, parse_verification
+from cashwatch.inference.validation import (
+    OutputInvalid, parse_cues, parse_observation, parse_partial_verification, parse_verification,
+)
 from cashwatch.inference.vision_budget import image_tokens
 
 
@@ -253,15 +255,16 @@ class LocalPerception:
             res = self._generate("verify", req, self.cfg.verify_call_cap_sec, deadline)
             assessments, status = self._read_verify(res.text, request, frames, pred_ids)
             if assessments is None:
-                # One bounded repair (text only): reformat the previous answer, add no facts.
+                # A missing frame reference cannot be recovered by text-only formatting.
+                # One bounded visual retry rechecks the original evidence and questions.
                 n = len(pred_ids)
                 rreq = GenRequest(
-                    system=("You fix the format of an earlier answer about video frames. Do not add facts. "
-                            "Rewrite it as one line per statement: Q<number>: yes <frames>; no <frames> "
-                            "or Q<number>: unclear. Frames are integers 1 to " + str(len(frames)) + "."),
-                    segments=[("text", f"There are {n} statements (Q1 to Q{n}).\nPrevious answer:\n"
-                                       f"{res.text[:2000]}\nRewrite it now.")],
-                    images=[], max_tokens=24 + 40 * n,
+                    system=prompt.system,
+                    segments=prompt.segments + [("text", "\nRecheck each statement. Every yes and no "
+                        "needs explicit visible frame numbers. Use unclear when evidence is insufficient.")],
+                    images=images, max_tokens=min(int(request.max_output_tokens),
+                        self.cfg.repair_max_tokens, 24 + 40 * n),
+                    max_long_side=self.cfg.max_long_side_px, max_pixels=self.cfg.max_pixels,
                     context=dict(ctx, repair=True, error="no statement answered"))
                 prompt_hashes.append(P.call_prompt_hash(rreq.system, rreq.segments))
                 rres = self._generate("verify-repair", rreq, self.cfg.repair_call_cap_sec, deadline)
@@ -272,8 +275,8 @@ class LocalPerception:
                     # "unknown" (never support). Fail only when nothing at all was answered.
                     best = None
                     for text in (rres.text, res.text):
-                        cand = parse_cues(text, frames=frames, predicate_ids=pred_ids)
-                        if any(a.state != "unknown" for a in cand):
+                        cand = parse_partial_verification(text, frames=frames, predicate_ids=pred_ids)
+                        if cand is not None:
                             best = cand
                             break
                     if best is None:

@@ -40,6 +40,10 @@ class TzRegressions(unittest.TestCase):
         inside = nearby.model_copy(update={"start_sec": 10.2, "end_sec": 10.8})
         self.assertFalse(_covered_by_accepted(nearby, [accepted]))
         self.assertTrue(_covered_by_accepted(inside, [accepted]))
+        separate = inside.model_copy(update={"anchor_frame_id": "f2"})
+        self.assertFalse(_covered_by_accepted(separate, [accepted]))
+        uncited = inside.model_copy(update={"anchor_frame_id": None})
+        self.assertFalse(_covered_by_accepted(uncited, [accepted]))
 
     def test_unresolvable_evidence_is_typed_failure(self):
         event = SimpleNamespace(event_id="e", anchor_frame_id="missing", evidence_frame_ids=["missing"])

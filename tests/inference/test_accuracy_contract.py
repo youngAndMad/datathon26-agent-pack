@@ -8,7 +8,7 @@ from tests.inference import test_neutral_repair_budget as fixtures
 from cashwatch.deadline import Deadline
 from cashwatch.dto import ObservationRequest, PredicateDefinition, VerificationRequest
 from cashwatch.inference import prompts as P
-from cashwatch.inference.validation import OutputInvalid, parse_cues
+from cashwatch.inference.validation import OutputInvalid, parse_cues, parse_partial_verification
 
 
 class AccuracyContractTests(unittest.TestCase):
@@ -42,10 +42,40 @@ class AccuracyContractTests(unittest.TestCase):
         self.assertEqual([a.state for a in result.assessments], ["supported", "unknown"])
 
     def test_strict_parser_rejects_bad_references_and_syntax(self):
-        for answer in ["Q1: no 99", "Q1: yes", "Q1: nobody", "Q1: yes 1\nQ1: no 1",
+        for answer in ["Q1: no", "Q1: no 99", "Q1: yes", "Q1: nobody", "Q1: yes 1\nQ1: no 1",
                        "Q2: unclear", "Q1: unclear maybe", "Q1: yes 2-1"]:
             with self.subTest(answer=answer), self.assertRaises(OutputInvalid):
                 parse_cues(answer, frames=[self.frame], predicate_ids=["R1.a"], strict=True)
+
+    def test_partial_salvage_never_invents_frames_or_accepts_malformed_rows(self):
+        for invalid in ["no", "yes", "no 99", "yes 1,99", "yes 1 maybe", "nope 1"]:
+            with self.subTest(invalid=invalid):
+                result = parse_partial_verification("Q1: yes 1\nQ2: " + invalid,
+                    frames=[self.frame], predicate_ids=["R1.a", "R1.b"])
+                self.assertEqual(result[0].supporting_frame_ids, ["f1"])
+                self.assertEqual(result[1].state, "unknown")
+                self.assertEqual(result[1].contradicting_frame_ids, [])
+
+    def test_partial_salvage_conflicting_duplicates_unknown(self):
+        result = parse_partial_verification("Q1: yes 1\nQ1: no 1\nQ2: unclear",
+            frames=[self.frame], predicate_ids=["R1.a", "R1.b"])
+        self.assertEqual([a.state for a in result], ["unknown", "unknown"])
+
+    def test_adapter_salvages_grounded_rows_after_bounded_retry(self):
+        other = PredicateDefinition(predicate_id="R1.other", question_en="Other visible fact?")
+        result, gen = self.run_verify(["Q1: yes 1\nQ2: no", "extra text\nQ1: yes 1\nQ2: no"],
+                                      self.request([self.predicate, other]))
+        self.assertEqual(gen.kinds, ["verify", "verify-repair"])
+        self.assertEqual([a.state for a in result.assessments], ["supported", "unknown"])
+
+    def test_json_same_frame_conflict_remains_unknown(self):
+        answer = json.dumps({"candidate_id": "c1", "assessments": [{
+            "predicate_id": self.predicate.predicate_id, "state": "supported",
+            "supporting_frame_ids": ["f1"], "contradicting_frame_ids": ["f1"],
+            "visibility": "clear", "visible_reason": "synthetic conflict"}],
+            "interval_complete": False, "visibility_sufficient": True})
+        result, _ = self.run_verify([answer])
+        self.assertEqual(result.assessments[0].state, "unknown")
 
     def test_known_exclusion_not_rechecked(self):
         p = PredicateDefinition(predicate_id="R1.excl_ok", question_en="Compliant alternative?")

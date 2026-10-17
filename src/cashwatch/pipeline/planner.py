@@ -135,8 +135,32 @@ def refinement_times(start: float, end: float, sampling: dict, meta: VideoMetada
     return _times(s, e, float(sampling["refinement_fps"]), int(sampling["max_refinement_frames"]))
 
 
+def anchored_refinement_times(candidate: CandidateEvent, frames: list[FrameRef],
+                              sampling: dict, meta: VideoMetadata) -> list[float]:
+    """Optional dense proposal around a cited anchor; retain the wider context targets.
+
+    Decoding more targets does not increase the model batch cap. Evidence continues
+    to use decoded source PTS, never these requested sampling timestamps.
+    """
+    base = refinement_times(candidate.start_sec, candidate.end_sec, sampling, meta)
+    cfg = sampling.get("anchor_refinement")
+    if not cfg or not cfg.get("enabled", False):
+        return base
+    anchor = next((f for f in frames if f.frame_id == candidate.anchor_frame_id), None)
+    if anchor is None or not any(a.state == "supported" and anchor.frame_id in a.supporting_frame_ids
+                                 for a in candidate.assessments):
+        return base
+    radius, fps = float(cfg.get("radius_sec", 2)), float(cfg.get("fps", 4))
+    if not (0 < radius <= 2 and 0 < fps <= 4):
+        raise ValueError("anchor refinement supports at most +/-2 seconds at 4 fps")
+    lo = max(meta.first_frame_sec, anchor.relative_sec - radius)
+    hi = min(meta.last_frame_sec, anchor.relative_sec + radius)
+    return sorted(set(base + _times(lo, hi, fps, 17) + [anchor.relative_sec]))
+
+
 def select_verification_frames(candidate: CandidateEvent, coarse_frames: list[FrameRef],
-                               refined_frames: list[FrameRef], max_frames: int) -> list[FrameRef]:
+                               refined_frames: list[FrameRef], max_frames: int,
+                               *, focus_sec: float | None = None) -> list[FrameRef]:
     """Keep actual cited PTS frames while filling the fixed verification budget.
 
     Retained coarse frames are not re-requested through rounded floating times.
@@ -187,6 +211,15 @@ def select_verification_frames(candidate: CandidateEvent, coarse_frames: list[Fr
     # Spread remaining context frames over the largest temporal gaps; deterministic
     # tie breaking keeps repeated evaluations stable without exceeding the cap.
     remaining = set(refined) - selected
+    if focus_sec is not None:
+        # Spend at most half the remaining slots near the anchor. Preserve the
+        # other half for broad context; a close-up must not erase a transition.
+        focus_slots = (max_frames - len(selected)) // 2
+        nearby = sorted(remaining, key=lambda fid: (abs(frames[fid].relative_sec-focus_sec),
+                                                   frames[fid].relative_sec, fid))
+        for fid in nearby[:focus_slots]:
+            selected.add(fid)
+            remaining.remove(fid)
     while remaining and len(selected) < max_frames:
         fid = max(remaining, key=lambda key: (
             min(abs(frames[key].relative_sec - frames[kept].relative_sec) for kept in selected),

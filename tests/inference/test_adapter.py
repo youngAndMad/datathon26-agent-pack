@@ -140,7 +140,7 @@ def test_malformed_twice_is_model_output_invalid(ver_request, work_dir):
 
 
 def test_verify_ok(ver_request, work_dir):
-    responder, calls = _scripted("Q1: yes 4-6; no 1-3\nQ2: no")
+    responder, calls = _scripted("Q1: yes 4-6; no 1-3\nQ2: no 1-6")
     p = _fake(responder)
     r = p.verify(ver_request, work_dir, Deadline.in_seconds(30))
     assert r.schema_valid and r.parse_status == "ok"
@@ -161,14 +161,15 @@ def test_verify_repairs_out_of_range_frames_and_missing_lines(ver_request, work_
     r = p.verify(ver_request, work_dir, Deadline.in_seconds(30))
     assert r.assessments[0].supporting_frame_ids == ["f0001"] and r.assessments[1].state == "unknown"
     assert r.parse_status == "repaired"
-    assert len(calls) == 3  # warmup, original, one text-only repair
-    assert calls[-1].context.get("repair") is True and calls[-1].images == []
+    assert len(calls) == 3  # warmup, original, one bounded visual retry
+    assert calls[-1].context.get("repair") is True
+    assert len(calls[-1].images) == len(ver_request.frames)
     assert r.prompt_sha256 == P.combined_prompt_hash([
         P.call_prompt_hash(call.system, call.segments) for call in calls[1:]])
 
 
 def test_verify_invalid_references_twice_fail_bounded(ver_request, work_dir):
-    responder, calls = _scripted("Q1: yes 99\nQ2: unclear", "Q1: yes 99\nQ2: unclear")
+    responder, calls = _scripted("Q1: yes 99\nQ2: no", "Q1: yes 99\nQ2: no")
     p = _fake(responder)
     with pytest.raises(PipelineError) as caught:
         p.verify(ver_request, work_dir, Deadline.in_seconds(30))

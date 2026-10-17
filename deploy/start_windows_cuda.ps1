@@ -1,9 +1,13 @@
 [CmdletBinding()]
-param([switch]$Prepare, [switch]$Smoke)
+param([switch]$Prepare, [switch]$Smoke, [switch]$LowVram)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $Repo = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $Repo
+if ($LowVram) {
+    $env:CASHWATCH_PROFILE_PATH = "$Repo\deploy\runtime-profile.windows-cuda-4gb.json"
+    Write-Warning 'Experimental 4 GiB profile: reduced sampling and resolution; domain accuracy is not qualified.'
+}
 $CpuPy = "$Repo\.venv-windows\Scripts\python.exe"
 $GpuPy = "$Repo\.tools\venv-cuda\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $CpuPy)) { throw 'Existing .venv-windows is required to preserve Python and dependency versions.' }

@@ -7,10 +7,12 @@ from pathlib import Path
 import os
 import shutil
 import uuid
+import sys
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 
 def main():
@@ -38,7 +40,11 @@ def main():
 
     try:
         return pytest.main(["tests/inference/test_validation.py", "tests/inference/test_adapter.py",
+                            "tests/inference/test_accuracy_contract.py",
                             "tests/rules/test_engine.py", "tests/pipeline/test_pipeline.py",
+                            "tests/rules/test_event_dedup.py", "tests/rules/test_service_item_conditions.py",
+                            "tests/pipeline/test_anchor_refinement.py",
+                            "tests/pipeline/test_verification_frame_selection.py",
                             "-q", "-p", "no:cacheprovider"], plugins=[WorkspaceTemps()])
     finally:
         # Delete only this invocation's UUID directory inside the workspace.
