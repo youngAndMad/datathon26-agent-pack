@@ -22,3 +22,5 @@ evaluation/annotations/private/
 evaluation/manifest/private/
 evaluation/reports/private/
 tests/fixtures/generated/
+deploy/cashwatch.env
+.claude/
