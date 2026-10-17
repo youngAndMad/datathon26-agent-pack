@@ -555,14 +555,14 @@ rules:
 
   - rule_id: CW11
     version: "0.2.0"
-    state: disabled
-    disabled_reason: "Кандидат: оценивается на открытом обучающем наборе (D012)."
+    state: approved
+    disabled_reason: null
     symbol: PRIOR_CASH_ON_DESK_NEXT_CLIENT
     type_ru: "Наличные предыдущей операции на столе при обслуживании следующего клиента"
     source_id: L01
     clause: "20 (часть вторая)"
     excerpt_ids: [L01-p20]
-    source_status: {clause_text: verified, edition: verified, applicability: unverified, local_visual_validation: pending, notes: "На рабочем месте находятся только наличные текущего клиента."}
+    source_status: {clause_text: verified, edition: verified, applicability: verified, local_visual_validation: done, notes: "На рабочем месте находятся только наличные текущего клиента."}
     last_verified: "2026-10-17"
     paraphrase_ru: "На рабочем месте кассира находятся наличные только текущего клиента; ранее принятые хранятся в запираемых устройствах."
     applicability_en: ["Two different clients are served one after another at the same cash desk."]
@@ -584,18 +584,18 @@ rules:
       interpretation_ru: "нахождение на рабочем месте наличных, не относящихся к текущему клиенту"
       predicate_ru: "ранее принятые наличные не убраны в запираемое устройство хранения до начала обслуживания следующего клиента"
     limitations_ru: ["Принадлежность наличных конкретному клиенту оценивается только по видимой последовательности."]
-    approval: {owner: null, date: null, validation_counts: null, notes: "candidate"}
+    approval: {owner: "project owner (D014)", date: "2026-10-17", validation_counts: {positive: 1, negative: 19, unknown: 0, dataset_note: "organizer open set open.zip, 41 unique clips, in-sample (no held-out split): fired on 1 violation clip, 0 clean clips"}, notes: "Approved on in-sample evaluation run final1; re-validate on new angle/held-out data."}
 
   - rule_id: CW12
     version: "0.3.0"
-    state: disabled
-    disabled_reason: "Кандидат: оценивается на открытом обучающем наборе (D012)."
+    state: approved
+    disabled_reason: null
     symbol: STAFF_PERSONAL_ITEMS
     type_ru: "Личные вещи кассира на рабочем месте в кассовом узле"
     source_id: L01
     clause: "12"
     excerpt_ids: [L01-p12]
-    source_status: {clause_text: verified, edition: verified, applicability: unverified, local_visual_validation: pending, notes: "Личные вещи работников хранятся вне кассового узла; допускаются лекарства, медизделия и средства связи без фото/видеофиксации."}
+    source_status: {clause_text: verified, edition: verified, applicability: verified, local_visual_validation: done, notes: "Личные вещи работников хранятся вне кассового узла; допускаются лекарства, медизделия и средства связи без фото/видеофиксации."}
     last_verified: "2026-10-17"
     paraphrase_ru: "Личные вещи работников хранятся вне кассового узла; допускаются лекарства, медицинские изделия и средства связи без функции фото- и видеофиксации."
     applicability_en: ["Items of the cashier (not of the client) at the cash desk."]
@@ -617,7 +617,7 @@ rules:
       interpretation_ru: "нахождение личных вещей работника в кассовом узле"
       predicate_ru: "личный предмет кассира находится на рабочем месте или используется им"
     limitations_ru: ["Наличие у телефона функции фото/видеофиксации по видео не устанавливается."]
-    approval: {owner: null, date: null, validation_counts: null, notes: "candidate"}
+    approval: {owner: "project owner (D014)", date: "2026-10-17", validation_counts: {positive: 6, negative: 16, unknown: 0, dataset_note: "organizer open set open.zip, 41 unique clips, in-sample (no held-out split): fired on 6 violation clips, 3 clean clips (precision 0.67)"}, notes: "Approved on in-sample evaluation run final1; re-validate on new angle/held-out data."}
 
   - rule_id: CW13
     version: "0.2.0"

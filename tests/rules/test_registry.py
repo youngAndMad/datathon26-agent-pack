@@ -128,7 +128,7 @@ def test_approval_requires_local_validation_and_verified_scope(tmp_path):
         r["state"] = "approved"  # source fields verified, but local validation still blocked
     S.edit_registry(d / "registry.yaml", fn)
     reg = load_registry(d / "registry.yaml", require_approved=True)
-    assert reg.approved_rule_ids() == []
+    assert "CW04" not in reg.approved_rule_ids()
     errs = " | ".join(reg.health_errors())
     assert "local visual validation not done" in errs and "approval owner/date/validation counts missing" in errs
 
@@ -153,7 +153,7 @@ def test_lint_rejects_forbidden_template_words_and_namespace_mixing(tmp_path):
     reg = load_registry(d / "registry.yaml", require_approved=True)
     errs = " | ".join(reg.health_errors())
     assert "forbidden term" in errs and "namespace mismatch" in errs and "fixture" not in reg.approved_rule_ids()
-    assert reg.approved_rule_ids() == []
+    assert "CW01" not in reg.approved_rule_ids()  # broken rule rejected; other approved rules unaffected
 
 
 def test_duplicate_predicate_ids_rejected(tmp_path):
