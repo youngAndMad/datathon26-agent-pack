@@ -46,6 +46,11 @@ def _err(seq: int, kind: str, exc: BaseException) -> dict[str, Any]:
 
 
 def main() -> int:
+    if os.name == "nt":
+        import msvcrt
+        # CRT text mode translates CR/LF and treats Ctrl-Z as EOF, corrupting pickle.
+        msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
+        msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
     proto_out = os.fdopen(os.dup(1), "wb")
     os.dup2(2, 1)  # stray prints -> stderr
     sys.stdout = sys.stderr

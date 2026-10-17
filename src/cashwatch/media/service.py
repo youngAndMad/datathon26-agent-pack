@@ -26,7 +26,7 @@ from cashwatch.dto import EvidenceFrame, FrameManifest, FrameRef, MotionSample, 
 from cashwatch.errors import PipelineError
 from cashwatch.media import decode as D
 from cashwatch.media.paths import resolve_existing, sha256_file, validate_source
-from cashwatch.media.tools import ffprobe, find_tool, run_tool
+from cashwatch.media.tools import _env, ffprobe, find_tool, run_tool
 
 MOV_DEMUXER = "mov,mp4,m4a,3gp,3g2,mj2"
 _SRC_ROOT = str(Path(__file__).resolve().parents[2])
@@ -87,7 +87,7 @@ class MediaService:
         if not self.isolate:
             reply = D.run_op(op, kwargs)
         else:
-            env = {k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL")}
+            env = _env()
             env["PYTHONPATH"] = os.pathsep.join([_SRC_ROOT, *[p for p in sys.path if p]])
             env["PYTHONDONTWRITEBYTECODE"] = "1"
             try:

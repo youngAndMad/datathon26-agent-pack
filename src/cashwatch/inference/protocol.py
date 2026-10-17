@@ -31,6 +31,16 @@ OFFLINE_ENV = {
 _HDR = struct.Struct(">I")
 MAX_FRAME_BYTES = 256 * 1024 * 1024
 
+if os.name == "nt":
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    _peek_pipe = ctypes.WinDLL("kernel32", use_last_error=True).PeekNamedPipe
+    _peek_pipe.argtypes = [wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
+                          wintypes.LPVOID, ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID]
+    _peek_pipe.restype = wintypes.BOOL
+
 
 class ProtocolTimeout(Exception):
     pass
@@ -42,6 +52,8 @@ class ProtocolEOF(Exception):
 
 def write_frame(fh: BinaryIO, obj: Any) -> None:
     data = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+    if len(data) > MAX_FRAME_BYTES:
+        raise ValueError("protocol frame exceeds limit")
     fh.write(_HDR.pack(len(data)) + data)
     fh.flush()
 
@@ -53,10 +65,24 @@ def _read_exact(fd: int, n: int, deadline: float | None) -> bytes:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ProtocolTimeout()
-            ready, _, _ = select.select([fd], [], [], remaining)
-            if not ready:
-                raise ProtocolTimeout()
-        chunk = os.read(fd, n - len(buf))
+            if os.name == "nt":
+                # Windows select accepts sockets, not subprocess pipe handles.
+                available = wintypes.DWORD()
+                if not _peek_pipe(msvcrt.get_osfhandle(fd), None, 0, None,
+                                  ctypes.byref(available), None):
+                    raise ProtocolEOF()
+                if not available.value:
+                    time.sleep(min(0.005, remaining))
+                    continue
+                read_size = min(n - len(buf), available.value)
+            else:
+                ready, _, _ = select.select([fd], [], [], remaining)
+                if not ready:
+                    raise ProtocolTimeout()
+                read_size = n - len(buf)
+        else:
+            read_size = n - len(buf)
+        chunk = os.read(fd, read_size)
         if not chunk:
             raise ProtocolEOF()
         buf.extend(chunk)
