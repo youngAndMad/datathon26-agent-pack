@@ -4,11 +4,15 @@ param(
     [ValidateSet('transformers', 'fake')][string]$Backend = 'transformers',
     [ValidateSet('cpu', 'cuda')][string]$Device = 'cpu',
     [ValidateRange(1,65535)][int]$Port = 8000,
+    [switch]$WindowsLocalTest,
+    [switch]$LowMemory,
     [ValidateRange(1,1800)][int]$TimeoutSeconds = 240
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if ($Mode -eq 'production' -and $Backend -eq 'fake') { throw 'Fake backend is forbidden in production.' }
+if ($WindowsLocalTest -and $Mode -ne 'test') { throw 'WindowsLocalTest storage is only allowed in explicit test mode.' }
+if ($LowMemory -and ($Device -ne 'cpu' -or $Backend -ne 'transformers')) { throw 'LowMemory requires transformers on CPU.' }
 if ($Mode -eq 'test') { Write-Warning 'TEST MODE: synthetic rules only; results do not establish banking violations.' }
 if ($Backend -eq 'fake') { Write-Warning 'FAKE BACKEND: plumbing check only; no real model inference.' }
 $Repo = Split-Path -Parent $PSScriptRoot
@@ -22,6 +26,12 @@ $env:CASHWATCH_DEVICE = $Device
 $env:CASHWATCH_HOST = '127.0.0.1'
 $env:CASHWATCH_PORT = $Port.ToString()
 $env:CASHWATCH_DATA_DIR = "$Repo\data"
+$env:CASHWATCH_WINDOWS_TEST_INHERIT_ACL = if ($WindowsLocalTest) { '1' } else { '0' }
+$env:CASHWATCH_WINDOWS_CPU_LOW_MEMORY = if ($LowMemory) { '1' } else { '0' }
+if ($WindowsLocalTest) {
+    $env:CASHWATCH_DATA_DIR = "$Repo\data\windows-local"
+    New-Item -ItemType Directory -Force -Path $env:CASHWATCH_DATA_DIR | Out-Null
+}
 $env:CASHWATCH_API_KEY_FILE = "$Repo\secrets\jury_api_key"
 $env:CASHWATCH_MODEL_PATH = "$Repo\models\qwen3-vl-4b-instruct"
 $env:CASHWATCH_MODEL_MANIFEST = "$Repo\models\manifest.json"
@@ -47,8 +57,10 @@ foreach ($Required in $RequiredArtifacts) {
 # Fail fast on unfinished wiring / unapproved rules rather than running an endless restart loop.
 & $Py -c "from cashwatch.settings import get_settings; from cashwatch.reporting import create_reporting; from cashwatch.rules import create_rules,load_registry; s=get_settings(); s.read_api_key(); assert not s.production_errors(), 'Invalid production configuration'; r=load_registry(s.registry_path,require_approved=True,allow_test=s.mode=='test'); assert r.approved_rule_ids() and not r.health_errors(), 'No healthy approved rule registry'"
 if ($LASTEXITCODE -ne 0) { throw "$Mode preflight failed: required modules or valid rule registry are unavailable. No service was started." }
-$Run = "$Repo\data\run"
-$Logs = "$Repo\data\logs"
+& $Py -c "from cashwatch.settings import get_settings; from cashwatch.storage import create_store; create_store(get_settings())"
+if ($LASTEXITCODE -ne 0) { throw 'Storage preflight failed: check local data directory permissions and SQLite access. No service was started.' }
+$Run = Join-Path $env:CASHWATCH_DATA_DIR 'run'
+$Logs = Join-Path $env:CASHWATCH_DATA_DIR 'logs'
 New-Item -ItemType Directory -Force -Path $Run,$Logs | Out-Null
 foreach ($Name in @('worker','api')) {
     if (Test-Path -LiteralPath "$Run\$Name.windows.json") { throw 'Existing launch record. Run deploy\stop.ps1 first.' }
@@ -82,8 +94,11 @@ try {
     } finally { $Timer.Stop() }
     if (-not $Ready) { throw "Readiness timeout after $TimeoutSeconds seconds. See $Logs. CPU performance has not been qualified for the five-minute limit." }
     Write-Host "Ready: http://127.0.0.1:$Port ($Mode, $Backend, $Device)"
-    Write-Host "Logs: $Logs. Stop: powershell -NoProfile -ExecutionPolicy Bypass -File deploy\stop.ps1"
+    $StopOption = if ($WindowsLocalTest) { ' -WindowsLocalTest' } else { '' }
+    Write-Host "Logs: $Logs. Stop: powershell -NoProfile -ExecutionPolicy Bypass -File deploy\stop.ps1$StopOption"
 } catch {
-    & "$PSScriptRoot\stop.ps1" -RunDirectory $Run
-    throw
+    $LaunchError = $_
+    try { & "$PSScriptRoot\stop.ps1" -RunDirectory $Run }
+    catch { Write-Warning "Cleanup also failed: $($_.Exception.Message). Check tracked processes in $Run." }
+    throw $LaunchError
 }

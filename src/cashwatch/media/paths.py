@@ -11,6 +11,17 @@ from pathlib import Path
 from cashwatch.errors import PipelineError
 
 _URL_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
+_WINDOWS_ABSOLUTE_RE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def _is_local_path(raw: str) -> bool:
+    # A drive letter is not a URI scheme on Windows. Drive-relative paths,
+    # UNC shares, device namespaces and NTFS alternate streams are not inputs.
+    if "\x00" in raw or raw.startswith(("\\\\", "//")):
+        return False
+    if os.name == "nt" and _WINDOWS_ABSOLUTE_RE.match(raw):
+        return ":" not in raw[2:]
+    return not _URL_RE.match(raw) and (os.name != "nt" or ":" not in raw)
 
 
 def validate_source(local_path: Path | str) -> Path:
@@ -20,10 +31,13 @@ def validate_source(local_path: Path | str) -> Path:
     layer only reads local files that storage has already persisted.
     """
     raw = os.fspath(local_path)
-    if not isinstance(raw, str) or _URL_RE.match(raw) or "\x00" in raw:
+    if not isinstance(raw, str) or not _is_local_path(raw):
         raise PipelineError("invalid_media", "source must be a local filesystem path")
     p = Path(raw).expanduser().absolute()
     try:
+        p = p.resolve()
+        if not _is_local_path(str(p)):
+            raise PipelineError("invalid_media", "source must be a local filesystem path")
         st = p.stat()
     except OSError as exc:
         raise PipelineError("invalid_media", f"source not accessible: {type(exc).__name__}") from None
@@ -31,7 +45,7 @@ def validate_source(local_path: Path | str) -> Path:
         raise PipelineError("invalid_media", "source is not a regular file")
     if st.st_size == 0:
         raise PipelineError("invalid_media", "source is empty")
-    return p.resolve()
+    return p
 
 
 def sha256_file(path: Path, chunk: int = 1 << 20) -> str:

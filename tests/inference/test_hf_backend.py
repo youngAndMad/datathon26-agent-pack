@@ -143,6 +143,52 @@ class HfBackendTests(unittest.TestCase):
                 self.assertEqual(b._device(torch), expected)
         self.assertEqual(HfBackend("unused", {"device": "cuda:1"})._device(torch), "cuda:1")
 
+    def test_explicit_cpu_disk_offload_keeps_weights_local_and_limits_placement(self):
+        path = Path(__file__).resolve().parent / "synthetic-model"
+        torch, transformers = MagicMock(), MagicMock()
+        torch.__version__ = transformers.__version__ = "synthetic"
+        torch.device.return_value = SimpleNamespace(type="cpu")
+        options = {"device": "cpu", "dtype": "bfloat16", "max_memory": {"cpu": "2GiB"},
+                   "offload_dir": str(path / "offload")}
+        with patch("cashwatch.inference.backends.hf_backend.check_model_dir", return_value=path), \
+             patch.dict(sys.modules, {"torch": torch, "transformers": transformers}), \
+             patch.dict(os.environ), patch.object(Path, "mkdir") as mkdir:
+            info = HfBackend(str(path), options).load()
+            loader = transformers.Qwen3VLForConditionalGeneration.from_pretrained
+            kwargs = loader.call_args.kwargs
+            self.assertEqual(loader.call_count, 1)
+            self.assertEqual(kwargs["device_map"], "auto")
+            self.assertEqual(kwargs["max_memory"], {"cpu": "2GiB"})
+            self.assertEqual(kwargs["dtype"], torch.bfloat16)
+            self.assertEqual(kwargs["offload_folder"], str((path / "offload").resolve()))
+            self.assertIs(kwargs["offload_buffers"], True)
+            self.assertIs(kwargs["local_files_only"], True)
+            self.assertIs(kwargs["trust_remote_code"], False)
+            self.assertIs(info["disk_offload"], True)
+            mkdir.assert_called_once_with(parents=True, exist_ok=True)
+
+    def test_invalid_offload_options_fail_before_loading(self):
+        path = Path(__file__).resolve().parent / "synthetic-model"
+        cases = [
+            {"dtype": "int8"},
+            {"max_memory": {"cpu": "2GiB"}},
+            {"offload_dir": "offload"},
+            {"max_memory": {"cpu": 0}, "offload_dir": "offload"},
+            {"max_memory": {"cpu": True}, "offload_dir": "offload"},
+            {"max_memory": {0: "2GiB", "cpu": "2GiB"}, "offload_dir": "offload"},
+            {"device": "cuda", "max_memory": {"cpu": "2GiB"}, "offload_dir": "offload"},
+        ]
+        for options in cases:
+            with self.subTest(options=options):
+                torch, transformers = MagicMock(), MagicMock()
+                torch.device.return_value = SimpleNamespace(type=options.get("device", "cpu"))
+                with patch("cashwatch.inference.backends.hf_backend.check_model_dir", return_value=path), \
+                     patch.dict(sys.modules, {"torch": torch, "transformers": transformers}), \
+                     patch.dict(os.environ):
+                    with self.assertRaises(ValueError):
+                        HfBackend(str(path), {"device": "cpu", **options}).load()
+                    transformers.Qwen3VLForConditionalGeneration.from_pretrained.assert_not_called()
+
     def test_explicit_accelerator_load_and_unavailable_failure(self):
         path = Path(__file__).resolve().parent / "synthetic-model"
         for platform, device, dtype in [("win32", "cuda", "float16"),

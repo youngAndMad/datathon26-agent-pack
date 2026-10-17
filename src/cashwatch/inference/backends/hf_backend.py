@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 from cashwatch.inference.backends import build_messages, check_model_dir, decode_images
@@ -56,12 +57,39 @@ class HfBackend:
         dtype = (torch.float32 if device.type == "cpu" else
                  torch.float16 if sys.platform == "win32" and device.type == "cuda" else
                  torch.bfloat16)
+        requested_dtype = self.options.get("dtype")
+        if requested_dtype is not None:
+            if requested_dtype not in {"float32", "float16", "bfloat16"}:
+                raise ValueError("dtype must be float32, float16 or bfloat16")
+            dtype = getattr(torch, requested_dtype)
+        placement: dict[str, Any] = {"device_map": str(device)}
+        memory = self.options.get("max_memory")
+        offload_dir = self.options.get("offload_dir")
+        if memory is not None or offload_dir is not None:
+            # Explicit CPU/disk mode only: never choose a different accelerator or
+            # silently retry an OOM. max_memory limits resident weights, NOT total
+            # process RAM (activations, KV cache and libraries need extra headroom).
+            if device.type != "cpu":
+                raise ValueError("disk offload options currently require device=cpu")
+            if not isinstance(memory, dict) or set(memory) != {"cpu"}:
+                raise ValueError("max_memory must contain only the cpu weight budget")
+            budget = memory["cpu"]
+            if (type(budget) is not int or budget <= 0) and (
+                not isinstance(budget, str) or not budget.strip()
+            ):
+                raise ValueError("cpu max_memory must be positive bytes or a memory size string")
+            if not isinstance(offload_dir, (str, os.PathLike)) or not str(offload_dir):
+                raise ValueError("max_memory requires an explicit offload_dir")
+            folder = Path(offload_dir).resolve()
+            folder.mkdir(parents=True, exist_ok=True)
+            placement = {"device_map": "auto", "max_memory": dict(memory),
+                         "offload_folder": str(folder), "offload_buffers": True}
         processor = AutoProcessor.from_pretrained(
             str(path), local_files_only=True, trust_remote_code=False, use_fast=False,
         )
         model = Qwen3VLForConditionalGeneration.from_pretrained(
             str(path), local_files_only=True, trust_remote_code=False,
-            dtype=dtype, device_map=str(device), attn_implementation="sdpa",
+            dtype=dtype, attn_implementation="sdpa", **placement,
         )
         model.eval()
         gc = model.generation_config
@@ -78,6 +106,8 @@ class HfBackend:
             "image_processor": type(ip).__name__,
             "min_pixels": getattr(ip, "min_pixels", None),
             "max_pixels": self.options.get("max_pixels") or getattr(ip, "max_pixels", None),
+            "disk_offload": memory is not None,
+            "max_memory": dict(memory) if memory is not None else None,
         }
         self.loaded = True
         return self.load_info

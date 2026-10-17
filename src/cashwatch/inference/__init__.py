@@ -9,6 +9,7 @@ The model always runs in a supervised child process (see supervisor.py); call
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +106,12 @@ def create_perception(settings, *, config=None, responder=None, stderr_path: Pat
 
     from cashwatch.inference.supervisor import ChildGenerator
     options: dict[str, Any] = {"device": settings.device}
+    # Optional Windows workstation launch profile; shared configs remain unchanged.
+    if os.name == "nt" and os.environ.get("CASHWATCH_WINDOWS_CPU_LOW_MEMORY") == "1":
+        if settings.device not in ("cpu", "auto"):
+            raise PipelineError("model_unavailable", "low-memory Windows profile requires CPU")
+        options.update(device="cpu", dtype="bfloat16", max_memory={"cpu": "2GiB"},
+                       offload_dir=str(Path(settings.data_dir) / "model-offload"))
     if stderr_path is None:
         stderr_path = Path(settings.data_dir) / "logs" / "model-child.log"
     gen = ChildGenerator(backend, model_path, options=options, stderr_path=stderr_path)
