@@ -66,6 +66,9 @@ class WindowsRuntimeTests(unittest.TestCase):
                                      creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
         proc = gen._proc
         start = time.monotonic()
+        if os.name == "nt":
+            from cashwatch.inference.windows_process import start_ticks
+            gen._windows_start_ticks = start_ticks(proc.pid)
         with self.assertRaises(GenTimeout):
             gen._call({"op": "ping", "payload": b"x" * (2 * 1024 * 1024)}, 0.2)
         self.assertLess(time.monotonic() - start, 6)

@@ -84,6 +84,7 @@ class ChildGenerator:
         self.stderr_path = stderr_path
         self.python = python or sys.executable
         self._proc: subprocess.Popen | None = None
+        self._windows_start_ticks: int | None = None
         self._seq = 0
         self._lock = threading.Lock()
         self._loaded = False
@@ -116,6 +117,9 @@ class ChildGenerator:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                 close_fds=True,
             )
+            if os.name == "nt":
+                from cashwatch.inference.windows_process import start_ticks
+                self._windows_start_ticks = start_ticks(self._proc.pid)
         finally:
             if err is not subprocess.DEVNULL:
                 err.close()
@@ -150,14 +154,16 @@ class ChildGenerator:
         if p.poll() is None:
             try:
                 if os.name == "nt":
-                    # Kill descendants too (e.g. a backend helper); never invoke a shell.
-                    subprocess.run([os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
-                                                 "System32", "taskkill.exe"),
-                                    "/PID", str(p.pid), "/T", "/F"],
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   timeout=3, creationflags=subprocess.CREATE_NO_WINDOW)
-                    if p.poll() is None:
-                        p.kill()
+                    # A Windows venv Python launcher owns a second interpreter.
+                    # Killing only the launcher can leave model inference running.
+                    from cashwatch.inference.windows_process import stop_tree
+                    if self._windows_start_ticks is None:
+                        raise GenCrashed("Windows model process identity unavailable")
+                    try:
+                        stop_tree(p.pid, self._windows_start_ticks)
+                    except Exception as exc:
+                        # Keep the reference: never spawn a replacement after unverified cleanup.
+                        raise GenCrashed("Windows model tree cleanup failed: " + type(exc).__name__) from None
                 else:
                     os.killpg(p.pid, signal.SIGKILL)
             except (OSError, subprocess.TimeoutExpired):
@@ -176,6 +182,7 @@ class ChildGenerator:
             except OSError:
                 pass
         self._proc = None
+        self._windows_start_ticks = None
 
     def close(self, timeout_sec: float = 5.0) -> None:
         with self._lock:

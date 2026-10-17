@@ -7,6 +7,7 @@ errors deliberately propagate; retrying on another device would reset its budget
 from __future__ import annotations
 
 import os
+import logging
 import sys
 import time
 from pathlib import Path
@@ -87,10 +88,22 @@ class HfBackend:
         processor = AutoProcessor.from_pretrained(
             str(path), local_files_only=True, trust_remote_code=False, use_fast=False,
         )
-        model = Qwen3VLForConditionalGeneration.from_pretrained(
-            str(path), local_files_only=True, trust_remote_code=False,
-            dtype=dtype, attn_implementation="sdpa", **placement,
-        )
+        quantization = self.options.get("windows_int8", False)
+        if quantization:
+            if sys.platform != "win32" or device.type != "cpu" or memory is not None:
+                raise ValueError("windows_int8 requires Windows CPU without disk offload")
+            from cashwatch.inference.backends.windows_int8 import load_windows_int8
+            def packing_progress(event):
+                count = event.get("linear_layers", 0)
+                if count % 50 == 0:
+                    logging.getLogger("cashwatch.inference").warning("int8_packing layers=%d", count)
+            model = load_windows_int8(path, progress=packing_progress)
+            dtype = torch.float32
+        else:
+            model = Qwen3VLForConditionalGeneration.from_pretrained(
+                str(path), local_files_only=True, trust_remote_code=False,
+                dtype=dtype, attn_implementation="sdpa", **placement,
+            )
         model.eval()
         gc = model.generation_config
         gc.do_sample, gc.temperature, gc.top_p, gc.top_k = False, None, None, None
@@ -107,6 +120,7 @@ class HfBackend:
             "min_pixels": getattr(ip, "min_pixels", None),
             "max_pixels": self.options.get("max_pixels") or getattr(ip, "max_pixels", None),
             "disk_offload": memory is not None,
+            "windows_int8": bool(quantization),
             "max_memory": dict(memory) if memory is not None else None,
         }
         self.loaded = True
@@ -157,10 +171,22 @@ class HfBackend:
         elif self.device.type == "mps":
             torch.mps.synchronize()
         start = time.monotonic()
+        generation_options = {}
+        if self.options.get("windows_int8"):
+            from transformers import StoppingCriteria, StoppingCriteriaList
+            class ProgressOnly(StoppingCriteria):
+                def __call__(self, input_ids, scores, **kwargs):
+                    count = int(input_ids.shape[-1]) - prompt_tokens
+                    if count == 1 or count % 32 == 0:
+                        logging.getLogger("cashwatch.inference").warning(
+                            "int8_generation tokens=%d elapsed_sec=%.1f", count, time.monotonic() - start)
+                    return False
+            generation_options["stopping_criteria"] = StoppingCriteriaList([ProgressOnly()])
         with torch.inference_mode():
             output = self.model.generate(
                 **inputs, max_new_tokens=req.max_tokens, do_sample=False,
                 num_beams=1, use_cache=True, return_dict_in_generate=False,
+                **generation_options,
             )
         if cuda:
             torch.cuda.synchronize(self.device)

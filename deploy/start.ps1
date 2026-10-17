@@ -6,6 +6,9 @@ param(
     [ValidateRange(1,65535)][int]$Port = 8000,
     [switch]$WindowsLocalTest,
     [switch]$LowMemory,
+    [switch]$CpuInt8,
+    [ValidateSet('4b','2b')][string]$ModelSize = '4b',
+    [ValidateSet('bfloat16', 'float32')][string]$LowMemoryDtype = 'bfloat16',
     [ValidateRange(1,1800)][int]$TimeoutSeconds = 240
 )
 $ErrorActionPreference = 'Stop'
@@ -13,6 +16,7 @@ Set-StrictMode -Version Latest
 if ($Mode -eq 'production' -and $Backend -eq 'fake') { throw 'Fake backend is forbidden in production.' }
 if ($WindowsLocalTest -and $Mode -ne 'test') { throw 'WindowsLocalTest storage is only allowed in explicit test mode.' }
 if ($LowMemory -and ($Device -ne 'cpu' -or $Backend -ne 'transformers')) { throw 'LowMemory requires transformers on CPU.' }
+if ($CpuInt8 -and ($LowMemory -or $Device -ne 'cpu' -or $Backend -ne 'transformers')) { throw 'CpuInt8 requires transformers CPU without LowMemory disk offload.' }
 if ($Mode -eq 'test') { Write-Warning 'TEST MODE: synthetic rules only; results do not establish banking violations.' }
 if ($Backend -eq 'fake') { Write-Warning 'FAKE BACKEND: plumbing check only; no real model inference.' }
 $Repo = Split-Path -Parent $PSScriptRoot
@@ -28,6 +32,8 @@ $env:CASHWATCH_PORT = $Port.ToString()
 $env:CASHWATCH_DATA_DIR = "$Repo\data"
 $env:CASHWATCH_WINDOWS_TEST_INHERIT_ACL = if ($WindowsLocalTest) { '1' } else { '0' }
 $env:CASHWATCH_WINDOWS_CPU_LOW_MEMORY = if ($LowMemory) { '1' } else { '0' }
+$env:CASHWATCH_WINDOWS_CPU_INT8 = if ($CpuInt8) { '1' } else { '0' }
+$env:CASHWATCH_WINDOWS_CPU_DTYPE = $LowMemoryDtype
 if ($WindowsLocalTest) {
     $env:CASHWATCH_DATA_DIR = "$Repo\data\windows-local"
     New-Item -ItemType Directory -Force -Path $env:CASHWATCH_DATA_DIR | Out-Null
@@ -35,6 +41,11 @@ if ($WindowsLocalTest) {
 $env:CASHWATCH_API_KEY_FILE = "$Repo\secrets\jury_api_key"
 $env:CASHWATCH_MODEL_PATH = "$Repo\models\qwen3-vl-4b-instruct"
 $env:CASHWATCH_MODEL_MANIFEST = "$Repo\models\manifest.json"
+if ($ModelSize -eq '2b') {
+    if (-not $CpuInt8 -or -not $WindowsLocalTest) { throw 'The experimental 2B profile requires CpuInt8 and WindowsLocalTest.' }
+    $env:CASHWATCH_MODEL_PATH = "$Repo\models\qwen3-vl-2b-instruct"
+    $env:CASHWATCH_MODEL_MANIFEST = "$Repo\models\manifest.windows-2b.json"
+}
 $env:HF_HUB_OFFLINE = '1'
 $env:TRANSFORMERS_OFFLINE = '1'
 $env:HF_DATASETS_OFFLINE = '1'
@@ -59,6 +70,8 @@ foreach ($Required in $RequiredArtifacts) {
 if ($LASTEXITCODE -ne 0) { throw "$Mode preflight failed: required modules or valid rule registry are unavailable. No service was started." }
 & $Py -c "from cashwatch.settings import get_settings; from cashwatch.storage import create_store; create_store(get_settings())"
 if ($LASTEXITCODE -ne 0) { throw 'Storage preflight failed: check local data directory permissions and SQLite access. No service was started.' }
+$WorkerFreshSeconds = [double](& $Py -c "from cashwatch.storage.store import WORKER_FRESH_SEC; print(WORKER_FRESH_SEC)")
+if ($LASTEXITCODE -ne 0) { throw 'Could not determine the worker heartbeat freshness interval.' }
 $Run = Join-Path $env:CASHWATCH_DATA_DIR 'run'
 $Logs = Join-Path $env:CASHWATCH_DATA_DIR 'logs'
 New-Item -ItemType Directory -Force -Path $Run,$Logs | Out-Null
@@ -86,7 +99,9 @@ try {
                 $Request.Proxy = $null
                 $Request.Timeout = 2000
                 $Response = $Request.GetResponse()
-                try { $Ready = ([int]$Response.StatusCode -eq 200) } finally { $Response.Close() }
+                # A previous worker's ready heartbeat can survive a fast restart.
+                # Wait out that freshness interval before trusting the new instance.
+                try { $Ready = ([int]$Response.StatusCode -eq 200 -and $Timer.Elapsed.TotalSeconds -gt $WorkerFreshSeconds) } finally { $Response.Close() }
             } catch [System.Net.WebException] { if ($_.Exception.Response) { $_.Exception.Response.Close() } }
             if ($Ready) { break }
             Start-Sleep -Seconds 1

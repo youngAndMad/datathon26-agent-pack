@@ -1,5 +1,8 @@
 # Windows: локальная установка и запуск
 
+Для отдельного экспериментального профиля 2B со скачиванием, проверкой файлов
+и измерением памяти см. [windows-2b.md](windows-2b.md).
+
 Быстрый локальный запуск с пересборкой интерфейса:
 
 ```powershell
@@ -7,6 +10,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deploy\start_local.ps1
 ```
 
 Это явно тестовый режим с настоящей моделью на CPU, выгрузкой части весов на диск и синтетическим правилом TEST01. Скрипт задаёт OMP/MKL по 4 потока только дочерним процессам. Он не включает банковские правила и не гарантирует обработку за конкурсный лимит. Для повторного запуска сначала используйте `deploy\stop.ps1 -WindowsLocalTest`.
+
+Для этого Windows-запуска очередь отключена процессной переменной `CASHWATCH_MAX_QUEUE_LENGTH=0`: измерения очереди на Mac не переносятся на CPU с дисковой выгрузкой. При повторном запуске готовность проверяется после истечения срока действия heartbeat предыдущего worker, чтобы не объявить модель готовой по устаревшей записи.
+
+Параметр `-Precision float32` у `start_local.ps1` — только экспериментальный вариант. На i5-12450H (AVX2, 4 потока) синтетическая матричная операция с batch=128 была быстрее в FP32 (медианы 8.862 мс против 55.485 мс, n=5), но это **не** результат видеоанализа. FP32 загрузился и прогрелся, однако параллельное пользовательское задание завершилось `model_unavailable`; наш синтетический прогон затем прерван перезапуском и завершился `worker_lost`. Успешность/скорость всего анализа не установлены. Рабочий запуск возвращён к исходному BF16, лимиты инференса не увеличены.
+
+Исправлено завершение модели при таймауте: supervisor теперь использует тот же проверяемый механизм завершения дерева, что и Windows stop-скрипт. Это устраняет путь, где завершался только venv launcher. Регрессионный тест `tests/inference/test_windows_supervisor.py` проверяет исчезновение настоящего дочернего интерпретатора и возможность следующего запуска; он использует scripted backend только внутри теста. Технический лог `generation_failure` содержит тип ошибки, этап и лимит времени, без кадров и текста модели.
 
 Пересборка отдельно: `powershell -NoProfile -ExecutionPolicy Bypass -File deploy\build_ui.ps1`. Скрипт проверяет TypeScript и загружает временную JavaScript-копию исходного Vite-конфига через native loader; временный файл удаляется. Исходный конфиг, зависимости и версии не изменяются.
 
@@ -83,3 +92,48 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deploy\stop.ps1 -WindowsLoca
 Проверка синтаксиса скриптов и Python не равнозначна запуску реального анализа. Для тестового запуска с настоящей моделью нужны загруженные веса и зависимости. Для production дополнительно требуется утверждение банковских правил командой. Тестовые и синтетические ответы не используются как доказательство работоспособности production.
 
 Исходные конфигурации, pyproject.toml, uv.lock, существующая .venv и системные версии Python/Node/драйвера не меняются. Windows использует отдельное окружение и штатный `models/manifest.json`; переменные запуска действуют в процессе PowerShell и его дочерних процессах. Скрипты macOS остаются прежними.
+# Local diagnostic confirmation (2026-10-17)
+
+## Optional Windows resident INT8 profile
+
+`powershell -NoProfile -ExecutionPolicy Bypass -File deploy/start_local.ps1 -CpuInt8`
+selects an explicit CPU-only experimental path using the existing local Qwen
+safetensors and installed PyTorch. It packs Linear layers individually into
+dynamic INT8 (including a copy of the tied output head); embeddings keep BF16
+storage and produce FP32 activations. Other parameters stay FP32. No complete
+FP32 checkpoint copy, new download, runtime network, CUDA, or disk offload is
+required. Packing happens at startup and does not modify the source weights.
+Largest matrices are packed first to reduce transient memory. Quantization can
+change predictions; accuracy on banking footage has not been established.
+The INT8 profile allows up to 180 seconds for one observation call; the overall
+270-second job deadline still bounds every call. Other profiles keep their
+existing 60-second observation limit. Operational logs expose token counts and
+elapsed seconds only, never token text or image contents.
+macOS launch paths, shared configurations, Python and dependency versions are
+unchanged. Without `-CpuInt8`, the earlier disk-offload launch remains available.
+
+Synthetic tests cover tensor completeness, shape validation, tied output head,
+BF16 embedding conversion, and actual tiny Qwen text/image generation. These
+tests alone do not qualify the full model for the competition time budget.
+
+Full-model results on this laptop (2026-10-17): initial packing in model order
+crashed near the large output head; largest-first packing subsequently loaded
+and warmed successfully. The synthetic one-second pattern MOV still failed at
+the 60-second observation cap (64.422 seconds accepted-to-terminal). With the
+explicit INT8 180-second observation cap it failed after 185.609 seconds.
+Operational progress showed first token at 32.0 seconds, 96 tokens at 65.1,
+and 384 tokens at 171.5 seconds. No complete observation/result was produced.
+Thus this remains an experimental memory-saving extension, NOT a working fix
+for this laptop's analysis deadline. A smaller model or faster inference runtime
+requires a separate measured evaluation. Neither bank-video accuracy nor full
+competition readiness is claimed. Summaries are local under
+`data/windows-local/int8-smoke-summary.json` and
+`data/windows-local/int8-180-smoke-summary.json`.
+
+A synthetic `windows_pattern_smoke.mov` request against localhost returned HTTP
+202, then failed after 64.813 seconds from acceptance. The operational worker
+log recorded `generation_failure kind=timeout stage=observe call_limit_sec=60.0`.
+The public error was `model_unavailable`. This confirms the current CPU/disk
+profile does not finish even this observation within the configured call budget;
+successful model loading/readiness is not successful video inference. No bank
+footage was inspected for this check. The worker began reloading after the timeout.

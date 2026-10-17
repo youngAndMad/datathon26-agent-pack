@@ -242,6 +242,27 @@ class HfBackendTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             HfBackend(str(Path(__file__).resolve().parent), {}).load()
 
+    def test_windows_int8_is_explicit_and_never_loads_float_checkpoint(self):
+        path = Path(__file__).resolve().parent / "synthetic-model"
+        torch, transformers, int8 = MagicMock(), MagicMock(), MagicMock()
+        torch.device.return_value = SimpleNamespace(type="cpu")
+        torch.__version__ = transformers.__version__ = "synthetic"
+        with patch("cashwatch.inference.backends.hf_backend.check_model_dir", return_value=path), \
+             patch.dict(sys.modules, {"torch": torch, "transformers": transformers,
+                                     "cashwatch.inference.backends.windows_int8": int8}), \
+             patch.dict(os.environ), patch("sys.platform", "win32"):
+            info = HfBackend(str(path), {"device": "cpu", "windows_int8": True}).load()
+            int8.load_windows_int8.assert_called_once()
+            self.assertEqual(int8.load_windows_int8.call_args.args, (path.resolve(),))
+            transformers.Qwen3VLForConditionalGeneration.from_pretrained.assert_not_called()
+            self.assertTrue(info["windows_int8"])
+            self.assertFalse(info["disk_offload"])
+        with patch("cashwatch.inference.backends.hf_backend.check_model_dir", return_value=path), \
+             patch.dict(sys.modules, {"torch": torch, "transformers": transformers}), \
+             patch.dict(os.environ), patch("sys.platform", "darwin"):
+            with self.assertRaisesRegex(ValueError, "Windows CPU"):
+                HfBackend(str(path), {"device": "cpu", "windows_int8": True}).load()
+
 
 if __name__ == "__main__":
     unittest.main()

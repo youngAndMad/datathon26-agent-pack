@@ -13,7 +13,7 @@ from unittest.mock import patch
 import psutil
 
 spec = importlib.util.spec_from_file_location(
-    "windows_stop_tree", Path(__file__).resolve().parents[1] / "scripts/windows_stop_tree.py")
+    "windows_process", Path(__file__).resolve().parents[1] / "src/cashwatch/inference/windows_process.py")
 stop = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stop)
 
