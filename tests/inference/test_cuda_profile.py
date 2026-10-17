@@ -10,6 +10,7 @@ import cashwatch.inference.supervisor  # noqa: F401  (patched by attribute path;
 from cashwatch.inference import create_perception
 
 
+@unittest.skipIf(os.name != "nt", "patches os.name globally; pathlib breaks off Windows")
 class CudaProfileTests(unittest.TestCase):
     def setUp(self):
         self.settings = SimpleNamespace(backend="transformers", mode="test", device="cuda",
@@ -46,7 +47,6 @@ class CudaProfileTests(unittest.TestCase):
                     create_perception(self.settings)
         self.child.assert_not_called()
 
-    @unittest.skipIf(os.name != "nt", "patches os.name globally; pathlib breaks off Windows")
     def test_default_cpu_path_remains_unquantized(self):
         self.settings.device = "cpu"
         with patch.dict(os.environ, {"CASHWATCH_WINDOWS_CUDA_NF4": "0"}):
