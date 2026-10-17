@@ -233,4 +233,4 @@ def test_test_registry_clean_result_is_labeled_meaningless(tmp_path):
     ctx.registry.test_only = True
     report, _ = _run(tmp_path, ctx)
     assert report.jury_result.verdict == "no_violation"
-    assert "ТЕСТОВЫЙ РЕЕСТР" in report.coverage_notice_ru
+    assert any("ТЕСТОВЫЙ РЕЕСТР" in x for x in report.visual_limitations_ru)

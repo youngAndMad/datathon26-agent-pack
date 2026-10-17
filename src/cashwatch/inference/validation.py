@@ -314,7 +314,10 @@ def _map_labels(obj: dict[str, Any], labels: dict[str, str] | None) -> dict[str,
 
 def parse_observation(text: str, *, window_id: str, frames: list[FrameRef],
                       predicate_ids: list[str], labels: dict[str, str] | None = None) -> ParsedObservation:
-    obj = _map_labels(extract_json_object(text), labels)
+    obj = extract_json_object(text)
+    if not predicate_ids and isinstance(obj, dict):
+        obj.pop("cue_assessments", None)  # no cues were asked in this call; ignore extras
+    obj = _map_labels(obj, labels)
     try:
         raw = RawObservationOutput.model_validate(obj)
     except ValidationError as e:
@@ -372,3 +375,49 @@ def parse_verification(text: str, *, candidate_id: str, frames: list[FrameRef],
     lims = _limitations(raw.limitations, ctx, "limitations")
     return ParsedVerification(assessments, alts, raw.interval_complete, raw.visibility_sufficient,
                               _finish_limitations(lims, ctx))
+
+
+_CUE_LINE = re.compile(r"^\s*\**\s*Q\s*(\d+)\s*\**\s*[:.)-]\s*(yes|no|unclear|unknown)\b(.*)$", re.IGNORECASE)
+
+
+def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str]) -> list[PredicateAssessment]:
+    """Parse the compact cue answer format ("Q1: yes 3-9"). Missing/garbled answers become unknown;
+    out-of-range frame numbers are dropped (never mapped to other frames)."""
+    n = len(frames)
+    answers: dict[int, tuple[str, list[int]]] = {}
+    for line in text.splitlines():
+        m = _CUE_LINE.match(line)
+        if not m:
+            continue
+        q = int(m.group(1))
+        if not 1 <= q <= len(predicate_ids) or q in answers:
+            continue
+        word = m.group(2).lower()
+        idx: list[int] = []
+        for tok in re.findall(r"\d+\s*(?:-|–)\s*\d+|\d+", m.group(3)):
+            if "-" in tok or "–" in tok:
+                lo, hi = (int(x) for x in re.split(r"\s*[-–]\s*", tok))
+                if lo <= hi and hi - lo <= n:
+                    idx.extend(range(lo, hi + 1))
+            else:
+                idx.append(int(tok))
+        idx = sorted({i for i in idx if 1 <= i <= n})
+        answers[q] = (word, idx)
+    out: list[PredicateAssessment] = []
+    for q, pid in enumerate(predicate_ids, 1):
+        word, idx = answers.get(q, ("unclear", []))
+        ids = [frames[i - 1].frame_id for i in idx]
+        if word == "yes" and ids:
+            ts_ = [frames[i - 1].relative_sec for i in idx]
+            out.append(PredicateAssessment(predicate_id=pid, state="supported", supporting_frame_ids=ids,
+                                           interval_start_sec=min(ts_), interval_end_sec=max(ts_),
+                                           visibility="clear", reasoning_note="cue: yes"))
+        elif word == "no":
+            out.append(PredicateAssessment(predicate_id=pid, state="contradicted",
+                                           contradicting_frame_ids=[f.frame_id for f in frames],
+                                           visibility="clear", reasoning_note="cue: no"))
+        else:
+            # "yes" without frames is not grounded -> unknown
+            out.append(PredicateAssessment(predicate_id=pid, state="unknown", visibility="partial",
+                                           reasoning_note="cue: unclear" if word != "yes" else "cue: yes without frames"))
+    return out

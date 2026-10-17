@@ -26,10 +26,14 @@ def _fake(responder=None):
     return p
 
 
-def _scripted(*texts):
+def _scripted(*texts, cue="Q1: unclear\nQ2: unclear", cue_calls=None):
     calls = []
 
     def responder(req):
+        if req.context.get("kind") == "cue":  # compact cue call (observe call 2)
+            if cue_calls is not None:
+                cue_calls.append(req)
+            return cue
         calls.append(req)
         if req.context.get("kind") == "warmup":
             return "ok"
@@ -69,7 +73,8 @@ def test_expired_deadline(obs_request, work_dir):
 
 
 def test_frames_interleaved_with_labels_in_order(obs_request, work_dir):
-    responder, calls = _scripted(good_observation())
+    cue_calls = []
+    responder, calls = _scripted(good_observation(), cue_calls=cue_calls)
     p = _fake(responder)
     p.observe(obs_request, work_dir, Deadline.in_seconds(30))
     req = calls[-1]
@@ -78,8 +83,11 @@ def test_frames_interleaved_with_labels_in_order(obs_request, work_dir):
     order = [v for k, v in req.segments if k == "image"]
     assert order == list(range(len(obs_request.frames))) and len(req.images) == 6
     text = "".join(s for k, s in req.segments if k == "text")
-    assert "p.outside: Is the red square outside" in text and "Counterexamples: rectangle partly covered" in text
+    assert "p.outside" not in text  # observation call carries no cue questions
     assert req.max_tokens == 256
+    ctext = "".join(s for k, s in cue_calls[-1].segments if k == "text")
+    assert "Q1: Is the red square outside" in ctext and "rectangle partly covered" in ctext
+    assert "Frame 1 at 0.000s:" in ctext and len(cue_calls[-1].images) == 6
 
 
 def test_one_repair_then_ok(obs_request, work_dir):
@@ -96,11 +104,22 @@ def test_hallucinated_frame_twice_fails_after_exactly_one_repair(obs_request, wo
     bad = good_observation(observations=[{"frame_ids": ["f0042"], "action": "x", "visibility": "clear"}])
     responder, calls = _scripted(bad, bad, good_observation())
     p = _fake(responder)
+    no_cues = obs_request.model_copy(update={"cue_predicates": []})
     with pytest.raises(PipelineError) as ei:
-        p.observe(obs_request, work_dir, Deadline.in_seconds(30))
+        p.observe(no_cues, work_dir, Deadline.in_seconds(30))
     assert ei.value.code == "model_output_invalid"
     assert len(calls) == 3  # warmup + first call + one repair (third reply never requested)
     assert "f0042" in calls[-1].context["error"]
+
+
+def test_invalid_observation_is_nonfatal_when_cues_answered(obs_request, work_dir):
+    bad = good_observation(observations=[{"frame_ids": ["f0042"], "action": "x", "visibility": "clear"}])
+    responder, _ = _scripted(bad, bad, cue="Q1: yes 2-3\nQ2: no")
+    p = _fake(responder)
+    b = p.observe(obs_request, work_dir, Deadline.in_seconds(30))
+    assert b.observations == [] and b.limitations and b.parse_status == "repaired"
+    assert [c.state for c in b.cue_assessments] == ["supported", "contradicted"]
+    assert b.cue_assessments[0].supporting_frame_ids == ["f0001", "f0002"]
 
 
 def test_malformed_twice_is_model_output_invalid(ver_request, work_dir):
@@ -179,7 +198,7 @@ def test_index_label_mode_prompt_and_roundtrip(obs_request, work_dir):
                                                                "visibility": "clear"}],
                         "cue_assessments": [{"predicate_id": "p.outside", "state": "supported",
                                              "supporting_frame_ids": [5]}]})
-    responder, calls = _scripted(reply)
+    responder, calls = _scripted(reply, cue="Q1: yes 5\nQ2: unclear")
     p = create_perception(Settings(mode="test", backend="fake"), responder=responder,
                           config=adapter_config_from_profile(None, frame_label_mode="index"))
     p.warmup(timeout_sec=5)

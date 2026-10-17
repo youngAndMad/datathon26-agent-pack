@@ -29,7 +29,7 @@ from cashwatch.errors import PipelineError
 from cashwatch.inference import prompts as P
 from cashwatch.inference.protocol import GenRequest, GenResult
 from cashwatch.inference.supervisor import GenCrashed, GenError, GenLoadFailed, GenOOM, GenTimeout
-from cashwatch.inference.validation import OutputInvalid, parse_observation, parse_verification
+from cashwatch.inference.validation import OutputInvalid, parse_cues, parse_observation, parse_verification
 from cashwatch.inference.vision_budget import image_tokens
 
 
@@ -159,22 +159,47 @@ class LocalPerception:
             self._check_request(frames, pred_ids, window=(request.start_sec, request.end_sec))
             images = self._load_frames(frames, work_dir)
             mode = self.cfg.frame_label_mode
-            prompt = P.build_observe_prompt(request, mode)
+            # Call 1: neutral observations only (no cue questions; small models answer few cues
+            # reliably inside the large JSON schema).
+            obs_req = request.model_copy(update={"cue_predicates": []})
+            prompt = P.build_observe_prompt(obs_req, mode)
             labels = P.frame_labels(frames, mode) if mode == "index" else None
             ctx = {"kind": "observe", "window_id": request.window_id,
-                   "frame_ids": [f.frame_id for f in frames], "predicate_ids": pred_ids, "label_mode": mode}
+                   "frame_ids": [f.frame_id for f in frames], "predicate_ids": [], "label_mode": mode}
 
             def parse(text: str):
                 return parse_observation(text, window_id=request.window_id, frames=frames,
-                                         predicate_ids=pred_ids, labels=labels)
+                                         predicate_ids=[], labels=labels)
 
-            parsed, status, in_tok, out_tok = self._run(
-                "observe", prompt, images, request.max_output_tokens, self.cfg.observe_call_cap_sec,
-                deadline, parse, ctx, frames, pred_ids)
+            observations, limitations, status, in_tok, out_tok = [], [], "ok", 0, 0
+            try:
+                parsed, status, in_tok, out_tok = self._run(
+                    "observe", prompt, images, request.max_output_tokens, self.cfg.observe_call_cap_sec,
+                    deadline, parse, ctx, frames, [])
+                observations, limitations = parsed.observations, parsed.limitations
+            except PipelineError as e:
+                # Neutral observations are diagnostic; rule cues are the detection input. Without
+                # cues a failed observation stays fatal (mandatory coverage).
+                if e.code != "model_output_invalid" or not pred_ids:
+                    raise
+                status = "repaired"
+                limitations = ["neutral observation output invalid for this window"]
+            cues = []
+            if pred_ids:
+                # Call 2: compact numbered yes/no cue questions.
+                cprompt = P.build_cue_prompt(request)
+                creq = GenRequest(system=cprompt.system, segments=cprompt.segments, images=images,
+                                  max_tokens=16 + 24 * len(pred_ids), max_long_side=self.cfg.max_long_side_px,
+                                  max_pixels=self.cfg.max_pixels,
+                                  context=dict(ctx, kind="cue", predicate_ids=pred_ids))
+                cres = self._generate("cue", creq, self.cfg.observe_call_cap_sec, deadline)
+                cues = parse_cues(cres.text, frames=frames, predicate_ids=pred_ids)
+                in_tok += cres.prompt_tokens or 0
+                out_tok += cres.output_tokens or 0
             return ObservationBatch(
-                window_id=request.window_id, observations=parsed.observations,
-                cue_assessments=parsed.cue_assessments, parse_status=status,
-                limitations=parsed.limitations, elapsed_ms=int((time.monotonic() - t0) * 1000),
+                window_id=request.window_id, observations=observations,
+                cue_assessments=cues, parse_status=status,
+                limitations=limitations, elapsed_ms=int((time.monotonic() - t0) * 1000),
                 model_version=self.model_version, prompt_sha256=prompt.prompt_sha256,
                 input_tokens=in_tok, output_tokens=out_tok,
             )
