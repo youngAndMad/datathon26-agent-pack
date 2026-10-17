@@ -268,3 +268,21 @@ def test_default_config_uses_index_labels(obs_request, work_dir):
     b = p.observe(obs_request, work_dir, Deadline.in_seconds(30))
     assert p.cfg.frame_label_mode == "index"
     assert b.prompt_sha256 == _observation_hash(obs_request, "index")
+
+
+def test_verify_tolerant_fallback_after_failed_repair(ver_request, work_dir):
+    # Model keeps adding stray text: strict parse + repair fail, but answered lines are kept and
+    # unanswered statements stay unknown (never support) instead of failing the whole job.
+    responder, _ = _scripted("Here you go:\nQ1: yes 2-3\nthanks", "Sure!\nQ1: yes 2-3")
+    p = _fake(responder)
+    r = p.verify(ver_request, work_dir, Deadline.in_seconds(30))
+    assert r.parse_status == "repaired"
+    assert r.assessments[0].state == "supported" and r.assessments[1].state == "unknown"
+
+
+def test_verify_fails_when_nothing_answered_even_after_repair(ver_request, work_dir):
+    responder, _ = _scripted("no idea", "still no idea")
+    p = _fake(responder)
+    with pytest.raises(PipelineError) as ei:
+        p.verify(ver_request, work_dir, Deadline.in_seconds(30))
+    assert ei.value.code == "model_output_invalid"

@@ -268,7 +268,17 @@ class LocalPerception:
                 assessments, _ = self._read_verify(rres.text, request, frames, pred_ids)
                 status = "repaired"
                 if assessments is None:
-                    raise PipelineError("model_output_invalid", "verify: no statement answered")
+                    # Tolerant fallback: keep well-formed lines, unanswered statements stay
+                    # "unknown" (never support). Fail only when nothing at all was answered.
+                    best = None
+                    for text in (rres.text, res.text):
+                        cand = parse_cues(text, frames=frames, predicate_ids=pred_ids)
+                        if any(a.state != "unknown" for a in cand):
+                            best = cand
+                            break
+                    if best is None:
+                        raise PipelineError("model_output_invalid", "verify: no statement answered")
+                    assessments = best
             # Exclusions (compliant alternatives) asked one at a time: inside a list a small model
             # tends to skip them or echo the other answers.
             for i, p in enumerate(request.predicates):
