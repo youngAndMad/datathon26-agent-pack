@@ -10,6 +10,7 @@ from datetime import datetime
 from cashwatch.deadline import parse_utc
 from cashwatch.dto import (
     AnalysisReport,
+    EventReview,
     UiEvent,
     UiEvidence,
     UiInterval,
@@ -53,14 +54,16 @@ def coverage_notice(report: AnalysisReport) -> str | None:
     # stored visual limitations verbatim rather than inventing text.
     if report.coverage_notice_ru:
         return report.coverage_notice_ru
+    # Only deterministic Russian limitations; free model text (coverage.visual_limitations) is
+    # never shown in the reviewer flow.
     lim = list(report.visual_limitations_ru)
-    if report.coverage is not None:
-        lim.extend(x for x in report.coverage.visual_limitations if x not in lim)
     return "; ".join(lim) if lim else None
 
 
 def build_ui_report(view: JobView, report: AnalysisReport | None, *, now: datetime, default_mode: str,
-                    media_available: bool) -> UiReport:
+                    media_available: bool, reviews: list[EventReview] | None = None) -> UiReport:
+    """reviews: all stored reviewer decisions (chronological); they never alter verdict/events.
+    Old report.json files without rule_coverage/quality/review_required project with defaults."""
     mode = report.mode if report is not None else default_mode
     if view.state == "succeeded":
         if report is None or report.jury_result is None:
@@ -72,7 +75,10 @@ def build_ui_report(view: JobView, report: AnalysisReport | None, *, now: dateti
         return UiReport(
             job_id=view.id, status="done", stage="complete", elapsed_sec=elapsed, progress=None, mode=mode,
             verdict=report.jury_result.verdict, coverage_notice_ru=coverage_notice(report),
-            events=project_events(view.id, report), media_available=media_available, error=None)
+            events=project_events(view.id, report), media_available=media_available,
+            rule_coverage=list(report.rule_coverage),
+            quality_notes_ru=list(report.quality.notes_ru) if report.quality is not None else [],
+            review_required=report.review_required, reviews=list(reviews or []), error=None)
     if view.state == "failed":
         end = parse_utc(view.finished_at) if view.finished_at else now
         return UiReport(

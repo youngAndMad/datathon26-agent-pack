@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     total_deadline_sec: float = 300.0
     internal_terminal_sec: float = 270.0  # hard internal deadline measured from request start
     active_jobs: int = 1
-    max_queue_length: int = 0  # queued jobs beyond active ones
+    max_queue_length: int = 1  # one queued job: measured real-clip max 102 s (n=42) => wait+run < 270 s
     retention_hours: float = 24.0
     lease_sec: float = 20.0
     worker_poll_sec: float = 0.5

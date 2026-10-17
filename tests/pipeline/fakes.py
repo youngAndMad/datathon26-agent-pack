@@ -202,7 +202,7 @@ class FakeRegistry:
         return RULE
 
     def cue_predicates(self):
-        return [PredicateDefinition(predicate_id="marker_out", question_en="Is the red square outside the zone?")]
+        return [PredicateDefinition(predicate_id="TEST01.marker_out", question_en="Is the red square outside the zone?")]
 
     def health_errors(self):
         return []

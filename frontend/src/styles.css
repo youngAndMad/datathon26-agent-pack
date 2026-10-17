@@ -432,6 +432,205 @@ progress {
   object-fit: contain;
 }
 
+/* ---- g0-1.2.0: observability, reviews, history ---- */
+input[type="text"],
+textarea,
+select {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+textarea {
+  resize: vertical;
+}
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.field-row > .field {
+  flex: 1 1 220px;
+}
+.inline {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.inline input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.btn-small {
+  padding: 6px 12px;
+  min-height: 36px;
+  font-size: 0.9rem;
+}
+.btn-link {
+  font: inherit;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  margin: 0 2px;
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 400;
+  margin-top: 8px;
+}
+.sub-title {
+  font-size: 1rem;
+  margin: 16px 0 6px;
+}
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--info-border);
+  background: var(--info-bg);
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin: 0 0 8px;
+}
+.badge-sub {
+  font-weight: 400;
+}
+.badge-test {
+  border-color: #b42318;
+  background: #b42318;
+  color: #ffffff;
+}
+.rule-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.rule {
+  border: 1px solid var(--border);
+  border-left-width: 5px;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 6px 0;
+}
+.rule p {
+  margin: 4px 0 0;
+}
+.rule-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+.rule-status {
+  font-weight: 700;
+  min-width: 13em;
+}
+.rule-checked {
+  border-left-color: var(--ok-border);
+}
+.rule-partially_checked {
+  border-left-color: var(--warn-border);
+}
+.rule-not_checkable {
+  border-left-color: var(--muted);
+  border-left-style: dashed;
+}
+.seg-unverifiable {
+  position: absolute;
+  top: -12px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--muted);
+  border-radius: 3px;
+  cursor: pointer;
+  background: repeating-linear-gradient(45deg, var(--muted) 0 3px, transparent 3px 7px);
+  opacity: 0.8;
+}
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-swatch {
+  display: inline-block;
+  width: 24px;
+  height: 12px;
+  border: 1px solid var(--muted);
+  background: repeating-linear-gradient(45deg, var(--muted) 0 3px, transparent 3px 7px);
+}
+.clip-row {
+  align-items: center;
+  margin-top: 0;
+}
+.review-box {
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+.review-latest {
+  border: 1px solid var(--info-border);
+  background: var(--info-bg);
+  border-radius: 6px;
+  padding: 6px 12px;
+  margin: 6px 0;
+}
+.review-latest p {
+  margin: 2px 0;
+}
+.review-fields {
+  margin-top: 8px;
+}
+.review-fields .field {
+  margin-bottom: 8px;
+}
+.missed-form {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.missed-list {
+  padding-left: 20px;
+}
+.history-controls {
+  align-items: flex-end;
+}
+.history-controls .field {
+  margin: 0;
+  min-width: 180px;
+}
+.table-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.history-table th,
+.history-table td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.history-table .badge {
+  margin: 0;
+  font-size: 0.8rem;
+}
+.history-entry {
+  justify-content: flex-end;
+  align-items: center;
+}
+
 @media (max-width: 600px) {
   .card {
     padding: 14px;

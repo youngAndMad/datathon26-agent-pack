@@ -303,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
     for c in clips:
         p = Path(c["path"])
         row = {k: c.get(k) for k in ("clip_id", "split", "group", "label_verdict", "label_timestamps_sec",
-                                     "label_types")}
+                                     "label_types", "angle")}
         if not p.is_file():
             row.update(predicted=None, error_code="clip_missing", contract_errors=[])
             rows.append(row)
@@ -335,6 +335,8 @@ def main(argv: list[str] | None = None) -> int:
                 "Single-timestamp labels do not imply intervals. Small-sample results are uncertain.",
         "overall": summarize(rows),
         "per_split": {s: summarize([r for r in rows if r["split"] == s]) for s in splits},
+        "per_angle": {a_: summarize([r for r in rows if (r.get("angle") or "unspecified") == a_])
+                      for a_ in sorted({r.get("angle") or "unspecified" for r in rows})},
     }
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     (REPORT_DIR / f"{run}.json").write_text(json.dumps({"summary": summary, "clips": rows}, ensure_ascii=False,

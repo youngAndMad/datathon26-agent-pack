@@ -62,5 +62,49 @@
     }
   ],
   "media_available": true,
+  "rule_coverage": [
+    {
+      "rule_id": "FIXTURE-A",
+      "type_ru": "Тестовый тип FIXTURE-A",
+      "status": "checked",
+      "unverifiable_intervals": [],
+      "note_ru": ""
+    },
+    {
+      "rule_id": "FIXTURE-B",
+      "type_ru": "Тестовый тип FIXTURE-B",
+      "status": "partially_checked",
+      "unverifiable_intervals": [
+        {
+          "start_sec": 60.0,
+          "end_sec": 72.0
+        }
+      ],
+      "note_ru": "Зона работы с наличными перекрыта"
+    },
+    {
+      "rule_id": "FIXTURE-C",
+      "type_ru": "Тестовый тип FIXTURE-C",
+      "status": "not_checkable",
+      "unverifiable_intervals": [],
+      "note_ru": "Нужная зона не видна в кадре"
+    }
+  ],
+  "quality_notes_ru": [
+    "Часть кадров (3 из 120) слишком тёмная"
+  ],
+  "review_required": true,
+  "reviews": [
+    {
+      "review_id": "r1",
+      "event_id": "e1",
+      "decision": "confirmed",
+      "comment": "Тестовый отзыв",
+      "corrected_type": null,
+      "corrected_timecode_sec": null,
+      "reviewer": "fixture",
+      "reviewed_at": "2026-10-17T10:00:00.000+00:00"
+    }
+  ],
   "error": null
 }

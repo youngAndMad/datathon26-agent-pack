@@ -40,3 +40,32 @@ export function pluralEvents(n: number): string {
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "события";
   return "событий";
 }
+
+/** ISO-8601 -> local "17.10.2026, 13:00:00"; unparsable input is shown as-is. */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("ru-RU");
+}
+
+/** Parse "12.5" / "12,5" / "01:02.500" into seconds; null if invalid or negative. */
+export function parseTimeInput(text: string): number | null {
+  const t = text.trim().replace(",", ".");
+  if (!t) return null;
+  let sec: number;
+  const m = /^(\d+):(\d{1,2}(?:\.\d+)?)$/.exec(t);
+  if (m) sec = Number(m[1]) * 60 + Number(m[2]);
+  else if (/^\d+(?:\.\d+)?$/.test(t)) sec = Number(t);
+  else return null;
+  if (!Number.isFinite(sec) || sec < 0) return null;
+  return Math.round(sec * 1000) / 1000;
+}
+
+/** Clip window around an event interval: [max(0, start-pad), end+pad] clamped to duration. */
+export function clipWindow(startSec: number, endSec: number, durationSec?: number | null, padSec = 3): { start: number; end: number } {
+  const start = Math.max(0, startSec - padSec);
+  let end = Math.max(start, endSec + padSec);
+  if (durationSec && Number.isFinite(durationSec) && durationSec > 0) end = Math.min(end, durationSec);
+  return { start: Math.min(start, end), end };
+}

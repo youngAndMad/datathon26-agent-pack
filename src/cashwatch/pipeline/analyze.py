@@ -28,6 +28,9 @@ from cashwatch.dto import (
     CandidateEvent,
     FrameManifest,
     FrameRef,
+    Interval,
+    QualitySummary,
+    RuleCoverage,
     JobInput,
     ObservationBatch,
     ObservationRequest,
@@ -95,19 +98,72 @@ def check_limits(meta: VideoMetadata, limits: dict) -> None:
         raise PipelineError("limits_exceeded", "pixel area")
 
 
-def check_usable(manifest: FrameManifest, media: MediaPort, work_dir: Path) -> list[str]:
+def check_usable(manifest: FrameManifest, media: MediaPort, work_dir: Path) -> QualitySummary:
     """Whole-clip usability. Fully blank/uniform footage is a failure; local issues are notes."""
-    flat = 0
+    flat = dark = 0
     for f in manifest.frames:
         with Image.open(media.resolve_frame(f, work_dir)) as im:
             stat = ImageStat.Stat(im.convert("L"))
             if stat.stddev[0] < 2.0:
                 flat += 1
-    if manifest.frames and flat == len(manifest.frames):
+            elif stat.mean[0] < 35.0:
+                dark += 1
+    n = len(manifest.frames)
+    if n and flat == n:
         raise PipelineError("input_unusable", "all sampled frames are uniform")
+    notes = []
     if flat:
-        return [f"Часть кадров ({flat} из {len(manifest.frames)}) почти однородна (засветка/перекрытие)"]
-    return []
+        notes.append(f"Часть кадров ({flat} из {n}) почти однородна (засветка/перекрытие объектива)")
+    if dark:
+        notes.append(f"Часть кадров ({dark} из {n}) слишком тёмная")
+    return QualitySummary(sampled_frames=n, dark_frames=dark, low_detail_frames=flat, notes_ru=notes)
+
+
+def _rule_of(registry: RuleRegistry, predicate_id: str) -> str | None:
+    fn = getattr(registry, "predicate_rule", None)
+    if callable(fn):
+        return fn(predicate_id)
+    return predicate_id.split(".", 1)[0] if "." in predicate_id else None
+
+
+def rule_coverage(registry: RuleRegistry, batches: list[ObservationBatch], windows: dict[str, tuple[float, float]],
+                  unverified: list[CandidateEvent]) -> list[RuleCoverage]:
+    """Observability per approved rule: windows where every coarse cue of the rule stayed unknown
+    could not be checked. A property of the evidence, not a verdict."""
+    out = []
+    for rid in registry.approved_rule_ids():
+        ref = registry.rule_ref(rid)
+        bad: list[tuple[float, float]] = []
+        seen = bad_windows = 0
+        for b in batches:
+            if b.window_id not in windows:
+                continue
+            states = [a.state for a in b.cue_assessments if _rule_of(registry, a.predicate_id) == rid]
+            if not states:
+                continue
+            seen += 1
+            if all(s == "unknown" for s in states):
+                bad_windows += 1
+                bad.append(windows[b.window_id])
+        bad += [(c.start_sec, c.end_sec) for c in unverified if c.rule_id == rid]
+        merged: list[list[float]] = []
+        for s, e in sorted(bad):
+            if merged and s <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], e)
+            else:
+                merged.append([s, e])
+        ivals = [Interval(start_sec=ts(s), end_sec=ts(e)) for s, e in merged]
+        if seen == 0:
+            status, note = "partially_checked", "Грубый проход не дал признаков по этому правилу"
+        elif bad_windows == seen:
+            status, note = "not_checkable", "Признаки правила не удалось оценить ни в одном окне"
+        elif ivals:
+            status, note = "partially_checked", "Есть интервалы, где правило нельзя проверить по видео"
+        else:
+            status, note = "checked", ""
+        out.append(RuleCoverage(rule_id=rid, type_ru=ref.type_ru, status=status, unverifiable_intervals=ivals[:50],
+                                note_ru=note))
+    return out
 
 
 def analyze_job(
@@ -115,6 +171,11 @@ def analyze_job(
 ) -> AnalysisReport:
     run = _Run()
     run.stages.append("receiving")  # upload persisted and job accepted before the worker claims it
+    if getattr(ctx.registry, "test_only", False):
+        # A clean result here only means "the synthetic test rule did not fire". Say so loudly.
+        run.limitations_ru.append(
+            "ТЕСТОВЫЙ РЕЕСТР: проверялось только синтетическое тестовое правило; реальные правила "
+            "кассовой дисциплины не подключены, поэтому отсутствие нарушений здесь ничего не означает")
     t_start = time.monotonic()
     sampling = ctx.profile["sampling"]
     budget = ctx.profile.get("budget_sec", {})
@@ -153,7 +214,8 @@ def analyze_job(
         manifest = _add_windows(manifest, extra, ctx.media, source, meta, work_dir,
                                 int(sampling["model_long_side_px"]), deadline)
         plan = build_plan(meta, ctx.profile, extra)
-    run.limitations_ru += check_usable(manifest, ctx.media, work_dir)
+    quality = check_usable(manifest, ctx.media, work_dir)
+    run.limitations_ru += quality.notes_ru
     ledger = CoverageLedger(profile_id=plan.profile_id, required=list(plan.mandatory_window_ids),
                             proposals=[w.window_id for w in plan.windows if not w.mandatory])
     _timed(run, "sampling", t0)
@@ -274,6 +336,10 @@ def analyze_job(
     _stage(ctx, run, "committing")
     t0 = time.monotonic()
     jury = project_jury_result(job.job_id, report_events, out_dir)
+    mandatory = {w.window_id: (w.start_sec, w.end_sec) for w in plan.windows if w.mandatory}
+    rcov = rule_coverage(ctx.registry, batches, mandatory, unverified)
+    quality = quality.model_copy(update={"unusable_windows": sum(
+        1 for b in batches if any(o.visibility == "unusable" for o in b.observations))})
     coverage = ledger.to_dto(manifest.coverage_first_sec, manifest.coverage_last_sec)
     accepted_at = parse_utc(job.request_started_at)
     report = AnalysisReport(
@@ -290,9 +356,15 @@ def analyze_job(
         completed_stages=list(run.stages),
         visual_limitations_ru=_dedup(run.limitations_ru)[:20],
         coverage_notice_ru=ctx.reporting.coverage_notice_ru(
-            jury.verdict, _dedup(run.limitations_ru + coverage.visual_limitations)[:5]),
+            # deterministic Russian notes only; raw model limitation text stays in the private report
+            jury.verdict, _dedup(run.limitations_ru)[:5]),
         events=report_events,
         review_notes=run.notes[:200],
+        rule_coverage=rcov,
+        quality=quality,
+        review_required=bool(unverified) or any(r.status != "checked" for r in rcov)
+        or (quality.dark_frames + quality.low_detail_frames) * 10 > max(1, quality.sampled_frames)
+        or any(n.kind == "unresolved_candidate" for n in run.notes),
         jury_result=jury,
     )
     validate_result(report, out_dir, ctx.registry)

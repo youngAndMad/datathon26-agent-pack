@@ -67,8 +67,10 @@ export function installFetch(opts: {
   jobs: Step[];
   report?: Step[];
   media?: () => Response;
+  /** Checked first; return undefined to fall through to the default routing. */
+  extra?: (url: string, init?: RequestInit) => Response | undefined;
 }) {
-  const calls: { url: string; key: string | null }[] = [];
+  const calls: { url: string; key: string | null; method: string; body: string | null }[] = [];
   let ji = 0;
   let ri = 0;
   const take = (arr: Step[], i: number): Response | "network" => {
@@ -79,9 +81,11 @@ export function installFetch(opts: {
   const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const key = new Headers(init?.headers).get("X-API-Key");
-    calls.push({ url, key });
+    calls.push({ url, key, method: (init?.method ?? "GET").toUpperCase(), body: (init?.body as string | undefined) ?? null });
     let r: Response | "network";
-    if (url.endsWith("/report")) r = take(opts.report ?? [json(violation)], ri++);
+    const ex = opts.extra?.(url, init);
+    if (ex) r = ex;
+    else if (url.endsWith("/report")) r = take(opts.report ?? [json(violation)], ri++);
     else if (url.endsWith("/media")) r = opts.media ? opts.media() : new Response("", { status: 404 });
     else if (url.includes("/evidence/")) r = new Response(new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" }));
     else r = take(opts.jobs, ji++);

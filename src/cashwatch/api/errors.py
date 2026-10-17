@@ -21,6 +21,8 @@ GENERIC_MESSAGES: dict[str, str] = {
     "storage_full": "Insufficient storage",
     "idempotency_conflict": "Idempotency-Key was already used with a different file",
     "range_not_satisfiable": "Requested range not satisfiable",
+    "job_not_done": "Job is not finished",
+    "invalid_review": "Review is inconsistent with the job (decision, event or timecode)",
     "internal_error": "Internal error",
 }
 

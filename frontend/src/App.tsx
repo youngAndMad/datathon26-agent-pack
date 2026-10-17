@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getJob, getReport, uploadVideo, type UploadHandle } from "./api";
 import { ERROR_MESSAGES_RU, MAX_UPLOAD_BYTES, TEST_MODE_BANNER, VERDICT_CLEAN, VERDICT_VIOLATION } from "./messages";
-import type { JobDone, UiReport } from "./types";
+import type { JobDone, JobSummary, UiReport } from "./types";
+import { HistoryView } from "./components/HistoryView";
 import { UploadForm } from "./components/UploadForm";
 import { UploadProgress } from "./components/UploadProgress";
 import { ProcessingView } from "./components/ProcessingView";
@@ -19,6 +20,7 @@ export interface AppConfig {
 
 type Phase =
   | { kind: "idle" }
+  | { kind: "history" }
   | { kind: "uploading"; loaded: number; total: number }
   | { kind: "processing"; jobId: string }
   | { kind: "done"; jobId: string; job: JobDone; report: UiReport }
@@ -85,6 +87,8 @@ export default function App({ config = {} }: { config?: AppConfig }) {
   const [poll, setPoll] = useState<PollStatus>({ report: null, reportAt: 0, connIssue: null, lost: false });
   const [pollGen, setPollGen] = useState(0);
   const [startedAt, setStartedAt] = useState(() => Date.now());
+  // Job opened from the history list (not the currently chosen file): no "retry same file".
+  const [fromHistory, setFromHistory] = useState(false);
   const uploadRef = useRef<UploadHandle | null>(null);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
 
@@ -118,6 +122,7 @@ export default function App({ config = {} }: { config?: AppConfig }) {
         return;
       }
       setStartedAt(Date.now());
+      setFromHistory(false);
       setPhase({ kind: "uploading", loaded: 0, total: f.size });
       const handle = uploadVideo(f, apiKey.trim(), (loaded, total) =>
         setPhase((p) => (p.kind === "uploading" ? { kind: "uploading", loaded, total } : p)),
@@ -156,8 +161,30 @@ export default function App({ config = {} }: { config?: AppConfig }) {
     setPendingJobId(null);
     setFormError(null);
     setPoll({ report: null, reportAt: 0, connIssue: null, lost: false });
+    setFromHistory(false);
     setPhase({ kind: "idle" });
   }, []);
+
+  const openHistory = useCallback(() => {
+    if (!apiKey.trim()) {
+      setFormError("Введите ключ доступа, чтобы открыть историю проверок.");
+      return;
+    }
+    uploadRef.current?.abort();
+    storeJob(null);
+    setFormError(null);
+    setPoll({ report: null, reportAt: 0, connIssue: null, lost: false });
+    setPhase({ kind: "history" });
+  }, [apiKey]);
+
+  const openFromHistory = useCallback(
+    (job: JobSummary) => {
+      setFromHistory(true);
+      setStartedAt(Date.now());
+      beginProcessing(job.job_id); // polling resolves done/failed immediately, or keeps polling
+    },
+    [beginProcessing],
+  );
 
   // ---------------------------------------------------------------- polling
   const processingJobId = phase.kind === "processing" ? phase.jobId : null;
@@ -256,7 +283,7 @@ export default function App({ config = {} }: { config?: AppConfig }) {
   }, [processingJobId, pollGen, pollIntervalMs, maxBackoffMs, maxFailures]);
 
   useEffect(() => {
-    if (phase.kind === "done" || phase.kind === "failed") headingRef.current?.focus();
+    if (phase.kind === "done" || phase.kind === "failed" || phase.kind === "history") headingRef.current?.focus();
   }, [phase.kind]);
 
   useEffect(() => () => uploadRef.current?.abort(), []);
@@ -299,6 +326,26 @@ export default function App({ config = {} }: { config?: AppConfig }) {
       </p>
 
       <main>
+        {phase.kind === "idle" && (
+          <div className="row history-entry">
+            <button type="button" className="btn" onClick={openHistory} disabled={!apiKey.trim()}>
+              История проверок
+            </button>
+            {!apiKey.trim() && <span className="hint">Доступна после ввода ключа доступа.</span>}
+          </div>
+        )}
+        {phase.kind === "history" && (
+          <HistoryView
+            headingRef={headingRef}
+            apiKey={apiKey.trim()}
+            onOpen={openFromHistory}
+            onBack={reset}
+            onUnauthorized={() => {
+              setFormError("Неверный ключ доступа. Проверьте ключ и повторите.");
+              setPhase({ kind: "idle" });
+            }}
+          />
+        )}
         {(phase.kind === "idle" || phase.kind === "uploading") && (
           <UploadForm
             apiKey={apiKey}
@@ -339,13 +386,15 @@ export default function App({ config = {} }: { config?: AppConfig }) {
             job={phase.job}
             report={phase.report}
             onReset={reset}
+            onBackToHistory={fromHistory ? openHistory : undefined}
           />
         )}
         {phase.kind === "failed" && (
           <FailedView
             headingRef={headingRef}
             message={phase.message}
-            canRetrySameFile={file !== null}
+            canRetrySameFile={file !== null && !fromHistory}
+            onBackToHistory={fromHistory ? openHistory : undefined}
             onRetry={() => {
               storeJob(null);
               startUpload(file);

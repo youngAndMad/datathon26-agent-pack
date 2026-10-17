@@ -24,3 +24,21 @@ export const VERDICT_VIOLATION = "Обнаружено возможное нар
 export const VERDICT_CLEAN = "Нарушение не обнаружено";
 export const CLEAN_QUALIFICATION = "В пределах видимых действий и проверяемых правил";
 export const TEST_MODE_BANNER = "ТЕСТОВЫЙ РЕЖИМ — результаты не являются реальным анализом";
+
+// ---- g0-1.2.0 copy
+
+export const REVIEW_REQUIRED_BADGE = "Требуется просмотр человеком";
+export const REVIEWER_DECISION_TITLE = "Решение проверяющего";
+
+export const COVERAGE_STATUS_RU: Record<string, { label: string; icon: string }> = {
+  checked: { label: "проверено", icon: "✓" },
+  partially_checked: { label: "проверено частично", icon: "◐" },
+  not_checkable: { label: "нельзя проверить по видео", icon: "✕" },
+};
+
+export const DECISION_RU: Record<string, string> = {
+  confirmed: "Подтверждено",
+  rejected: "Отклонено",
+  needs_review: "Требует проверки",
+  missed: "Пропущенное событие",
+};

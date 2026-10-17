@@ -37,8 +37,11 @@ from cashwatch.dto import (
     ERROR_MESSAGES_RU,
     AnalysisReport,
     ErrorInfo,
+    EventReview,
     JobInput,
+    JobSummary,
     JuryDoneResult,
+    ReviewRequest,
     Stage,
     StageProgress,
 )
@@ -54,6 +57,10 @@ ORPHAN_GRACE_SEC = 600.0  # unreferenced tmp files / job dirs older than this ar
 MIN_FREE_BYTES = 512 * 1024 * 1024
 
 NONTERMINAL = ("receiving", "queued", "running")
+MISSED_EVENT_ID = "missed"  # review of an event the system did not report
+LIST_STATUS_STATES: dict[str, tuple[str, ...]] = {
+    "processing": NONTERMINAL, "done": ("succeeded",), "failed": ("failed",),
+}
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 _HEX_RE = re.compile(r"^[0-9a-f]{32}$")
 _EVIDENCE_ID_RE = re.compile(r"^[A-Za-z0-9_.:\-]{1,128}$")
@@ -71,6 +78,10 @@ class CapacityFull(Exception):
 
 class IdempotencyConflict(Exception):
     pass
+
+
+class JobNotDone(Exception):
+    """The job left the succeeded state (e.g. expired) or is not finished."""
 
 
 
@@ -512,11 +523,13 @@ class JobStore:
             self._check_result(final, job_id)
         now_s = iso_utc(self._now(now_utc))
         rel = final.relative_to(self.root).as_posix()
+        verdict, n_events, review_required, mode = self._result_summary(final)
         with self._tx() as conn:
             cur = conn.execute(
                 "UPDATE jobs SET state='succeeded', result_path=?, stage='complete', progress_json=NULL,"
-                " finished_at=?, updated_at=?, error_code=NULL WHERE id=? AND state='running' AND generation=?",
-                (rel, now_s, now_s, job_id, generation))
+                " finished_at=?, updated_at=?, error_code=NULL, verdict=?, event_count=?, review_required=?,"
+                " mode=?, summary_cached=1 WHERE id=? AND state='running' AND generation=?",
+                (rel, now_s, now_s, verdict, n_events, int(review_required), mode, job_id, generation))
             if cur.rowcount != 1:
                 return False
             conn.execute("DELETE FROM leases WHERE job_id=?", (job_id,))
@@ -530,6 +543,20 @@ class JobStore:
             raise ValueError("jury.json job_id mismatch")
         if (jury.verdict == "violation") != bool(jury.violations):
             raise ValueError("verdict/violations invariant broken")
+
+    @staticmethod
+    def _result_summary(d: Path) -> tuple[str | None, int, bool, str | None]:
+        """(verdict, event_count, review_required, mode) from a validated result dir.
+        jury.json is authoritative for verdict/count; report.json is optional here."""
+        verdict, n = None, 0
+        with contextlib.suppress(OSError, ValueError):
+            jury = JuryDoneResult.model_validate_json((d / "jury.json").read_bytes())
+            verdict, n = jury.verdict, len(jury.violations)
+        review_required, mode = False, None
+        with contextlib.suppress(OSError, ValueError):
+            report = AnalysisReport.model_validate_json((d / "report.json").read_bytes())
+            review_required, mode = report.review_required, report.mode
+        return verdict, n, review_required, mode
 
     def fail_job(self, job_id: str, generation: int, error: ErrorInfo, now_utc: str | None = None) -> bool:
         now_s = iso_utc(self._now(now_utc))
@@ -630,10 +657,92 @@ class JobStore:
             for jid in ids:
                 conn.execute("UPDATE jobs SET state='expired', result_path=NULL, updated_at=? WHERE id=?",
                              (now_s, jid))
+                conn.execute("DELETE FROM reviews WHERE job_id=?", (jid,))
             conn.execute("DELETE FROM idempotency WHERE expires_at <= ?", (now_s,))
         for jid in ids:
             shutil.rmtree(self._job_dir(jid), ignore_errors=True)
         return len(ids)
+
+    # ------------------------------------------------------------------ reviews (API side)
+
+    def add_review(self, job_id: str, event_id: str, req: ReviewRequest,
+                   now_utc: str | None = None) -> EventReview:
+        """Append one reviewer decision. Stored results (jury.json/report.json) are never touched.
+        The caller validates event_id/timecode against report.json. Raises JobNotDone when the job is
+        no longer succeeded at insert time (CAS against concurrent retention)."""
+        review = EventReview(
+            review_id=str(uuid.uuid4()), event_id=event_id, decision=req.decision, comment=req.comment,
+            corrected_type=req.corrected_type, corrected_timecode_sec=req.corrected_timecode_sec,
+            reviewer=req.reviewer, reviewed_at=iso_utc(self._now(now_utc)))
+        with self._tx() as conn:
+            r = conn.execute("SELECT state FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if r is None or r[0] != "succeeded":
+                raise JobNotDone()
+            conn.execute(
+                "INSERT INTO reviews(review_id, job_id, event_id, decision, comment, corrected_type,"
+                " corrected_timecode_sec, reviewer, reviewed_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (review.review_id, job_id, review.event_id, review.decision, review.comment,
+                 review.corrected_type, review.corrected_timecode_sec, review.reviewer, review.reviewed_at))
+        return review
+
+    def list_reviews(self, job_id: str) -> list[EventReview]:
+        """All decisions for a job, chronological (append order). Latest per event wins in views."""
+        with self._ro() as conn:
+            rows = conn.execute(
+                "SELECT review_id, event_id, decision, comment, corrected_type, corrected_timecode_sec,"
+                " reviewer, reviewed_at FROM reviews WHERE job_id=? ORDER BY seq", (job_id,)).fetchall()
+        return [EventReview(**dict(r)) for r in rows]
+
+    # ------------------------------------------------------------------ history (API side)
+
+    def _backfill_summary(self, job_id: str, result_path: str | None) -> tuple:
+        """Lazily cache the summary of a job committed before migration 2."""
+        summary: tuple = (None, 0, False, None)
+        if result_path:
+            with contextlib.suppress(ValueError, OSError):
+                d = self._contained(result_path)
+                if d.is_dir():
+                    summary = self._result_summary(d)
+        verdict, n, rr, mode = summary
+        with self._tx() as conn:
+            conn.execute(
+                "UPDATE jobs SET verdict=?, event_count=?, review_required=?, mode=?, summary_cached=1"
+                " WHERE id=? AND state='succeeded' AND summary_cached=0", (verdict, n, int(rr), mode, job_id))
+        return summary
+
+    def list_jobs(self, principal_id: str, *, limit: int = 50, status: str | None = None) -> list[JobSummary]:
+        """Newest first by trusted receive time. Expired jobs are not listed. One indexed query;
+        result files are read only for not-yet-cached rows (pre-migration commits)."""
+        limit = max(1, min(int(limit), 200))
+        states = LIST_STATUS_STATES[status] if status else (*NONTERMINAL, "succeeded", "failed")
+        marks = ",".join("?" * len(states))
+        with self._ro() as conn:
+            rows = conn.execute(
+                "SELECT j.id, j.state, j.received_at, j.finished_at, j.error_code, j.result_path, j.verdict,"
+                " j.event_count, j.review_required, j.mode, j.summary_cached,"
+                " (SELECT COUNT(DISTINCT r.event_id) FROM reviews r WHERE r.job_id=j.id AND r.event_id != ?)"
+                " AS reviewed"
+                f" FROM jobs j WHERE j.principal_id=? AND j.state IN ({marks})"
+                " ORDER BY j.received_at DESC, j.accepted_at DESC, j.id DESC LIMIT ?",
+                (MISSED_EVENT_ID, principal_id, *states, limit)).fetchall()
+        default_mode = self.settings.mode
+        out: list[JobSummary] = []
+        for r in rows:
+            done = r["state"] == "succeeded"
+            verdict, n, rr, mode = r["verdict"], r["event_count"], bool(r["review_required"]), r["mode"]
+            if done and not r["summary_cached"]:
+                verdict, n, rr, mode = self._backfill_summary(r["id"], r["result_path"])
+            if mode not in ("production", "test"):
+                mode = default_mode
+            failed = r["state"] == "failed"
+            code = r["error_code"] if r["error_code"] in ERROR_MESSAGES_RU else "internal_error"
+            out.append(JobSummary(
+                job_id=r["id"], status="done" if done else "failed" if failed else "processing",
+                received_at=r["received_at"], finished_at=r["finished_at"] if (done or failed) else None,
+                verdict=verdict if done else None, event_count=n if done else 0,
+                reviewed_event_count=r["reviewed"] if done else 0, review_required=rr if done else False,
+                mode=mode, error_code=code if failed else None))
+        return out
 
     def counts(self) -> dict[str, int]:
         with self._ro() as conn:

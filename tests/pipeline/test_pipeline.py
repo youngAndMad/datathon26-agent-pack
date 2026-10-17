@@ -186,3 +186,51 @@ def test_tier_selection_is_prevalidated_and_fits_budget():
     assert count_coarse_windows(145.0, s_long) * 12.0 <= 130
     with pytest.raises(PipelineError):
         select_tier(fakes.meta(300.0), {**prof, "sampling_tiers": prof["sampling_tiers"][:1]})
+
+
+def test_rule_coverage_and_review_flag(tmp_path):
+    # FakePerception: cue supported only near events, "unknown" elsewhere -> unknown windows are unverifiable
+    report, _ = _run(tmp_path, _ctx(fakes.FakePerception(event_times=[20.0])))
+    (rc,) = report.rule_coverage
+    assert rc.rule_id == "TEST01" and rc.status == "partially_checked" and rc.unverifiable_intervals
+    assert report.review_required is True
+    assert report.quality.sampled_frames > 0 and report.quality.dark_frames == 0
+
+
+def test_rule_not_checkable_when_all_unknown(tmp_path):
+    report, _ = _run(tmp_path, _ctx(fakes.FakePerception()))
+    assert report.jury_result.verdict == "no_violation"
+    assert report.rule_coverage[0].status == "not_checkable"
+    assert report.review_required is True  # clean verdict, but a human should know the rule was not checkable
+
+
+def test_dark_frames_reported(tmp_path):
+    class Dark(fakes.FakeMedia):
+        def _frame(self, t, work_dir):
+            f = super()._frame(t, work_dir)
+            from PIL import Image, ImageDraw
+            im = Image.new("RGB", (64, 36), (5, 5, 5))
+            ImageDraw.Draw(im).rectangle([10, 10, 20, 20], fill=(60, 60, 60))
+            im.save(work_dir / f.local_path, format="JPEG")
+            return f
+    report, _ = _run(tmp_path, _ctx(fakes.FakePerception(), media=Dark(fakes.meta())))
+    assert report.quality.dark_frames == report.quality.sampled_frames
+    assert any("тёмн" in n for n in report.quality.notes_ru)
+
+
+def test_model_limitation_text_not_in_reviewer_notice(tmp_path):
+    class Chatty(fakes.FakePerception):
+        def observe(self, req, work_dir, deadline):
+            b = super().observe(req, work_dir, deadline)
+            return b.model_copy(update={"limitations": ["MODEL-FREE-TEXT limitation"]})
+    report, _ = _run(tmp_path, _ctx(Chatty()))
+    assert "MODEL-FREE-TEXT" not in (report.coverage_notice_ru or "")
+    assert "MODEL-FREE-TEXT limitation" in report.coverage.visual_limitations  # kept privately
+
+
+def test_test_registry_clean_result_is_labeled_meaningless(tmp_path):
+    ctx = _ctx(fakes.FakePerception())
+    ctx.registry.test_only = True
+    report, _ = _run(tmp_path, ctx)
+    assert report.jury_result.verdict == "no_violation"
+    assert "ТЕСТОВЫЙ РЕЕСТР" in report.coverage_notice_ru

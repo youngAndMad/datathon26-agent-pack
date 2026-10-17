@@ -6,9 +6,10 @@ interface Props {
   canRetrySameFile: boolean;
   onRetry: () => void;
   onChooseAnother: () => void;
+  onBackToHistory?: () => void;
 }
 
-export function FailedView({ headingRef, message, canRetrySameFile, onRetry, onChooseAnother }: Props) {
+export function FailedView({ headingRef, message, canRetrySameFile, onRetry, onChooseAnother, onBackToHistory }: Props) {
   return (
     <section className="card card-failed" aria-labelledby="failed-title" data-testid="failed-view">
       <h2 id="failed-title" ref={headingRef} tabIndex={-1}>
@@ -28,6 +29,11 @@ export function FailedView({ headingRef, message, canRetrySameFile, onRetry, onC
         <button type="button" className="btn" onClick={onChooseAnother}>
           Выбрать другой файл
         </button>
+        {onBackToHistory && (
+          <button type="button" className="btn" onClick={onBackToHistory}>
+            К истории проверок
+          </button>
+        )}
       </div>
     </section>
   );

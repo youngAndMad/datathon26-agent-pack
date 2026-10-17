@@ -1,5 +1,5 @@
-import { forwardRef } from "react";
-import { formatSeconds, formatTimecode } from "../format";
+import { forwardRef, type ReactNode } from "react";
+import { clipWindow, formatSeconds, formatTimecode } from "../format";
 import type { UiEvent } from "../types";
 import { EvidenceThumb } from "./EvidenceThumb";
 
@@ -17,10 +17,18 @@ interface Props {
   index: number;
   count: number;
   onSeek: (event: UiEvent) => void;
+  onClip: (event: UiEvent) => void;
+  clipAvailable: boolean;
+  clipActive: boolean;
+  children?: ReactNode;
 }
 
-export const EventCard = forwardRef<HTMLElement, Props>(function EventCard({ event, index, count, onSeek }, ref) {
+export const EventCard = forwardRef<HTMLElement, Props>(function EventCard(
+  { event, index, count, onSeek, onClip, clipAvailable, clipActive, children },
+  ref,
+) {
   const headingId = `event-${event.event_id}-title`;
+  const clip = clipWindow(event.interval.start_sec, event.interval.end_sec);
   const link = safeHttpUrl(event.source.official_url);
   return (
     <article className="event" ref={ref} tabIndex={-1} aria-labelledby={headingId} data-testid={`event-${event.event_id}`}>
@@ -38,6 +46,22 @@ export const EventCard = forwardRef<HTMLElement, Props>(function EventCard({ eve
           <span className="sr-only"> — перейти в видео</span>
         </button>
       </header>
+      <div className="row clip-row">
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={() => onClip(event)}
+          disabled={!clipAvailable}
+          aria-describedby={`${headingId}-clip`}
+        >
+          {clipActive ? "Фрагмент воспроизводится…" : "Показать фрагмент"}
+        </button>
+        <span id={`${headingId}-clip`} className="hint">
+          {clipAvailable
+            ? `${formatTimecode(clip.start)} — ${formatTimecode(clip.end)} (интервал события ±3 с)`
+            : "Видео недоступно — фрагмент нельзя воспроизвести, используйте кадры-доказательства."}
+        </span>
+      </div>
 
       <section className="event-section">
         <h4>Что видно</h4>
@@ -89,6 +113,7 @@ export const EventCard = forwardRef<HTMLElement, Props>(function EventCard({ eve
           </ul>
         </section>
       )}
+      {children}
     </article>
   );
 });

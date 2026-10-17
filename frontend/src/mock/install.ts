@@ -15,6 +15,7 @@ import processingReport from "./fixtures/ui-report-processing.json";
 import violationReport from "./fixtures/ui-report-violation.json";
 import juryClean from "./fixtures/jury-no-violation.json";
 import juryViolation from "./fixtures/jury-violation.json";
+import jobsList from "./fixtures/jobs-list.json";
 import e1Url from "./fixtures/e1.jpg?url";
 import e2Url from "./fixtures/e2.jpg?url";
 
@@ -29,6 +30,27 @@ const jobs = new Map<string, MockJob>();
 const STAGES = ["probing", "sampling", "observing", "observing", "observing", "observing", "verifying", "rendering_evidence", "committing"] as const;
 const realFetch = window.fetch.bind(window);
 const startTimes = new Map<string, number>();
+// Reviewer decisions per job (in-memory, echo of POST bodies; never alters the fixture jury result).
+const reviewsByJob = new Map<string, Record<string, unknown>[]>();
+let reviewSeq = 0;
+
+// History demo: the listed jobs open instantly as already-finished fixtures.
+for (const j of jobsList.jobs) {
+  if (j.status === "processing") continue;
+  jobs.set(j.job_id, { scenario: j.status === "failed" ? "fail" : "violation", polls: STAGES.length });
+  startTimes.set(j.job_id, Date.now());
+}
+
+function reviewsOf(jobId: string, fixtureReviews: unknown[] = []): Record<string, unknown>[] {
+  if (!reviewsByJob.has(jobId)) reviewsByJob.set(jobId, [...(fixtureReviews as Record<string, unknown>[])]);
+  return reviewsByJob.get(jobId)!;
+}
+
+function terminalReport(job: MockJob, jobId: string) {
+  if (job.scenario === "fail") return { ...failedReport, job_id: jobId };
+  const base = job.scenario === "clean" ? cleanReport : violationReport;
+  return { ...base, job_id: jobId, reviews: reviewsOf(jobId, base.reviews) };
+}
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -60,17 +82,79 @@ function processingAt(job: MockJob, jobId: string) {
 
 async function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
-  const path = url.startsWith("http") ? new URL(url).pathname : url;
+  const full = url.startsWith("http") ? new URL(url).pathname + new URL(url).search : url;
+  const [path, query = ""] = full.split("?");
+  const method = (init?.method ?? "GET").toUpperCase();
   if (!path.startsWith("/api/")) return realFetch(input, init);
   await new Promise((r) => setTimeout(r, 120));
   const key = keyOf(init);
   if (!key || key === "bad") return err(401, "unauthorized", "Unauthorized");
 
-  const m = path.match(/^\/api\/v1\/jobs\/([^/]+)(\/report|\/media|\/evidence\/([^/]+))?$/);
+  if (path === "/api/v1/jobs" && method === "GET") {
+    const status = new URLSearchParams(query).get("status");
+    const list = jobsList.jobs
+      .map((j) => {
+        const n = reviewsByJob.get(j.job_id);
+        if (!n) return j;
+        const reviewed = new Set(n.filter((r) => r.event_id !== "missed").map((r) => r.event_id)).size;
+        return { ...j, reviewed_event_count: reviewed };
+      })
+      .filter((j) => !status || j.status === status);
+    return json({ jobs: list });
+  }
+
+  const m = path.match(/^\/api\/v1\/jobs\/([^/]+)(\/report|\/media|\/reviews|\/export|\/evidence\/([^/]+)|\/events\/([^/]+)\/review)?$/);
   if (!m) return err(404, "not_found", "Not found");
   const jobId = decodeURIComponent(m[1]);
   const job = jobs.get(jobId);
   if (!job) return err(404, "not_found", "Not found");
+  const terminalNow = job.polls >= STAGES.length;
+
+  if (m[4] !== undefined) {
+    if (method !== "POST") return err(405, "method_not_allowed", "Method not allowed");
+    if (!terminalNow || job.scenario === "fail") return err(409, "not_done", "Job not done");
+    const eventId = decodeURIComponent(m[4]);
+    const report = terminalReport(job, jobId) as { events?: { event_id: string }[] };
+    if (eventId !== "missed" && !(report.events ?? []).some((e) => e.event_id === eventId)) {
+      return err(404, "not_found", "Unknown event");
+    }
+    const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    const review = {
+      review_id: `fx-${++reviewSeq}`,
+      event_id: eventId,
+      decision: body.decision,
+      comment: body.comment ?? "",
+      corrected_type: body.corrected_type ?? null,
+      corrected_timecode_sec: body.corrected_timecode_sec ?? null,
+      reviewer: body.reviewer ?? "",
+      reviewed_at: new Date().toISOString(),
+    };
+    reviewsOf(jobId, (report as { reviews?: unknown[] }).reviews).push(review);
+    return json(review, 201);
+  }
+  if (m[2] === "/reviews") {
+    if (!terminalNow || job.scenario === "fail") return json([]);
+    return json(reviewsOf(jobId, (terminalReport(job, jobId) as { reviews?: unknown[] }).reviews));
+  }
+  if (m[2] === "/export") {
+    if (!terminalNow) return err(409, "not_done", "Job not done");
+    const report = terminalReport(job, jobId);
+    const bundle = {
+      job_id: jobId,
+      exported_at: new Date().toISOString(),
+      report,
+      versions: null,
+      coverage: null,
+      original_jury_result: job.scenario === "fail" ? null : job.scenario === "clean" ? juryClean : juryViolation,
+    };
+    return new Response(JSON.stringify(bundle, null, 2), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Disposition": `attachment; filename="cashwatch-${jobId}-fixture.json"`,
+      },
+    });
+  }
 
   if (m[2]?.startsWith("/evidence/")) {
     const name = m[3];
@@ -87,9 +171,7 @@ async function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const terminal = job.polls >= STAGES.length;
   if (m[2] === "/report") {
     if (!terminal) return json(processingAt(job, jobId));
-    if (job.scenario === "fail") return json(failedReport);
-    if (job.scenario === "clean") return json(cleanReport);
-    return json(violationReport);
+    return json(terminalReport(job, jobId));
   }
 
   // GET /api/v1/jobs/{id}
@@ -99,8 +181,8 @@ async function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   }
   if (job.polls <= STAGES.length) return json({ job_id: jobId, status: "processing" });
   if (job.scenario === "fail") return json({ job_id: jobId, status: "failed", error: failedReport.error });
-  if (job.scenario === "clean") return json(juryClean);
-  return json(juryViolation);
+  if (job.scenario === "clean") return json({ ...juryClean, job_id: jobId });
+  return json({ ...juryViolation, job_id: jobId });
 }
 
 class MockXHR {
@@ -165,6 +247,7 @@ class MockXHR {
             ? "flaky"
             : "violation";
       jobs.set(JOB_ID, { scenario, polls: 0 });
+      reviewsByJob.delete(JOB_ID);
       startTimes.set(JOB_ID, Date.now());
       this.status = 202;
       this.responseText = JSON.stringify({ job_id: JOB_ID });

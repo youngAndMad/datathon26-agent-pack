@@ -38,6 +38,149 @@
       "title": "ErrorInfo",
       "type": "object"
     },
+    "EventReview": {
+      "additionalProperties": false,
+      "properties": {
+        "review_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:\\-]+$",
+          "title": "Review Id",
+          "type": "string"
+        },
+        "event_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:\\-]+$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "confirmed",
+            "rejected",
+            "needs_review",
+            "missed"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "comment": {
+          "default": "",
+          "title": "Comment",
+          "type": "string"
+        },
+        "corrected_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Corrected Type"
+        },
+        "corrected_timecode_sec": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Corrected Timecode Sec"
+        },
+        "reviewer": {
+          "default": "",
+          "title": "Reviewer",
+          "type": "string"
+        },
+        "reviewed_at": {
+          "title": "Reviewed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "review_id",
+        "event_id",
+        "decision",
+        "reviewed_at"
+      ],
+      "title": "EventReview",
+      "type": "object"
+    },
+    "Interval": {
+      "additionalProperties": false,
+      "properties": {
+        "start_sec": {
+          "minimum": 0,
+          "title": "Start Sec",
+          "type": "number"
+        },
+        "end_sec": {
+          "minimum": 0,
+          "title": "End Sec",
+          "type": "number"
+        }
+      },
+      "required": [
+        "start_sec",
+        "end_sec"
+      ],
+      "title": "Interval",
+      "type": "object"
+    },
+    "RuleCoverage": {
+      "additionalProperties": false,
+      "description": "Per approved rule: was it checkable on this clip? (observability, not a verdict).",
+      "properties": {
+        "rule_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:\\-]+$",
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "type_ru": {
+          "maxLength": 200,
+          "title": "Type Ru",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "checked",
+            "partially_checked",
+            "not_checkable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "unverifiable_intervals": {
+          "items": {
+            "$ref": "#/$defs/Interval"
+          },
+          "title": "Unverifiable Intervals",
+          "type": "array"
+        },
+        "note_ru": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Note Ru",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "type_ru",
+        "status"
+      ],
+      "title": "RuleCoverage",
+      "type": "object"
+    },
     "StageProgress": {
       "additionalProperties": false,
       "properties": {
@@ -289,6 +432,32 @@
       "default": false,
       "title": "Media Available",
       "type": "boolean"
+    },
+    "rule_coverage": {
+      "items": {
+        "$ref": "#/$defs/RuleCoverage"
+      },
+      "title": "Rule Coverage",
+      "type": "array"
+    },
+    "quality_notes_ru": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Quality Notes Ru",
+      "type": "array"
+    },
+    "review_required": {
+      "default": false,
+      "title": "Review Required",
+      "type": "boolean"
+    },
+    "reviews": {
+      "items": {
+        "$ref": "#/$defs/EventReview"
+      },
+      "title": "Reviews",
+      "type": "array"
     },
     "error": {
       "anyOf": [

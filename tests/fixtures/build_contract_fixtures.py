@@ -17,6 +17,11 @@ from PIL import Image, ImageDraw
 
 from cashwatch.dto import (
     ERROR_MESSAGES_RU,
+    EventReview,
+    Interval,
+    JobListResponse,
+    JobSummary,
+    RuleCoverage,
     JuryDoneResult,
     JuryEvidenceFrame,
     JuryViolation,
@@ -80,7 +85,17 @@ def main() -> None:
         "ui-report-violation.json": UiReport(
             job_id=JOB, status="done", stage="complete", elapsed_sec=181.2, mode="test",
             verdict="violation", events=ui_events, media_available=True,
-            coverage_notice_ru="В пределах видимых действий и проверяемых правил"),
+            coverage_notice_ru="В пределах видимых действий и проверяемых правил",
+            rule_coverage=[
+                RuleCoverage(rule_id="FIXTURE-A", type_ru="Тестовый тип FIXTURE-A", status="checked"),
+                RuleCoverage(rule_id="FIXTURE-B", type_ru="Тестовый тип FIXTURE-B", status="partially_checked",
+                             unverifiable_intervals=[Interval(start_sec=60.0, end_sec=72.0)],
+                             note_ru="Зона работы с наличными перекрыта"),
+                RuleCoverage(rule_id="FIXTURE-C", type_ru="Тестовый тип FIXTURE-C", status="not_checkable",
+                             note_ru="Нужная зона не видна в кадре")],
+            quality_notes_ru=["Часть кадров (3 из 120) слишком тёмная"], review_required=True,
+            reviews=[EventReview(review_id="r1", event_id="e1", decision="confirmed", comment="Тестовый отзыв",
+                                 reviewer="fixture", reviewed_at="2026-10-17T10:00:00.000+00:00")]),
         "ui-report-no-violation.json": UiReport(
             job_id=JOB, status="done", stage="complete", elapsed_sec=150.0, mode="test",
             verdict="no_violation", events=[], media_available=True,
@@ -89,6 +104,13 @@ def main() -> None:
             job_id=JOB, status="failed", stage="observing", elapsed_sec=270.0, mode="test",
             error={"code": "deadline_exceeded", "message": ERROR_MESSAGES_RU["deadline_exceeded"]}),
     }
+    fixtures["jobs-list.json"] = JobListResponse(jobs=[
+        JobSummary(job_id=JOB, status="done", received_at="2026-10-17T09:57:00.000+00:00",
+                   finished_at="2026-10-17T10:00:01.000+00:00", verdict="violation", event_count=2,
+                   reviewed_event_count=1, review_required=True, mode="test"),
+        JobSummary(job_id="00000000-0000-4000-8000-000000000002", status="failed",
+                   received_at="2026-10-17T09:40:00.000+00:00", finished_at="2026-10-17T09:44:30.000+00:00",
+                   mode="test", error_code="deadline_exceeded")])
     for name, model in fixtures.items():
         (OUT / name).write_text(model.model_dump_json(indent=2) + "\n", encoding="utf-8")
     print(f"wrote {len(fixtures)} fixtures to {OUT}")
