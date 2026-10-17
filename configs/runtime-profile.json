@@ -1,23 +1,29 @@
 {
-  "profile_id": "uniform-12s-1fps-v1",
-  "status": "benchmark_required",
-  "derived_from": "config/runtime-profile.provisional.json",
+  "profile_id": "mlx8-480px-v2",
+  "status": "synthetic_timing_only",
+  "derived_from": "config/runtime-profile.provisional.json; re-chosen from coordination/handoffs/C.md measurements (M4 Pro, MLX 8-bit, synthetic frames, n=5 per row)",
   "sampling": {
     "window_sec": 12,
     "overlap_sec": 3,
     "uniform_fps": 1,
     "max_frames_per_observation": 16,
-    "model_long_side_px": 640,
+    "model_long_side_px": 480,
     "motion_proposal_fps": 4,
-    "motion_top_k": 4,
+    "motion_top_k": 2,
     "refinement_radius_sec": 3,
-    "refinement_fps": 4,
-    "max_refinement_frames": 24,
-    "max_candidates_refined": 8,
+    "refinement_fps": 3,
+    "max_refinement_frames": 16,
+    "refine_long_side_px": 384,
+    "max_candidates_refined": 5,
     "max_visual_tokens": null,
     "observe_max_new_tokens": 512,
     "verify_max_new_tokens": 384
   },
+  "sampling_tiers": [
+    {"tier_id": "w12-1fps", "est_window_sec": 16.0},
+    {"tier_id": "w24-0.67fps", "window_sec": 24, "overlap_sec": 3, "uniform_fps": 0.67, "est_window_sec": 16.0},
+    {"tier_id": "w40-0.4fps", "window_sec": 40, "overlap_sec": 3, "uniform_fps": 0.4, "est_window_sec": 16.0}
+  ],
   "evidence": {
     "long_side_px": 1280,
     "jpeg_quality": 88,
@@ -25,9 +31,10 @@
   },
   "budget_sec": {
     "probe": 20,
-    "observe_total": 130,
-    "verify_total": 70,
+    "observe_total": 160,
+    "verify_total": 75,
     "evidence": 15,
     "soft_margin": 30
-  }
+  },
+  "measurements_note": "observe 16fr@480px p50 13.9 s / max 26.7 s; verify 16fr@384px p50 10.2 s / max 15.9 s; est_window_sec is a conservative p75-style planning value, not a guarantee. Domain timing on real footage not measured (D004)."
 }

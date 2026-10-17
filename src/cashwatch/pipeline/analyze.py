@@ -218,7 +218,8 @@ def analyze_job(
             break
         times = refinement_times(cand.start_sec, cand.end_sec, sampling, meta)
         rframes = ctx.media.frames_for_times(
-            source, meta, times, work_dir, long_side_px=int(sampling["model_long_side_px"]), deadline=deadline)
+            source, meta, times, work_dir,
+            long_side_px=int(sampling.get("refine_long_side_px", sampling["model_long_side_px"])), deadline=deadline)
         for f in rframes:
             all_frames.setdefault(f.frame_id, f)
         vreq = rules.build_verification(cand, rframes, job_id=job.job_id,
