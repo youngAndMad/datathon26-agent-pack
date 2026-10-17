@@ -193,7 +193,8 @@ class LocalPerception:
                                   max_pixels=self.cfg.max_pixels,
                                   context=dict(ctx, kind="cue", predicate_ids=pred_ids))
                 cres = self._generate("cue", creq, self.cfg.observe_call_cap_sec, deadline)
-                cues = parse_cues(cres.text, frames=frames, predicate_ids=pred_ids)
+                cues = parse_cues(cres.text, frames=frames, predicate_ids=pred_ids,
+                                  yes_without_frames_is_window=True)
                 in_tok += cres.prompt_tokens or 0
                 out_tok += cres.output_tokens or 0
             return ObservationBatch(

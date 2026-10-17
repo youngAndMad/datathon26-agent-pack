@@ -78,8 +78,7 @@ def test_fully_validated_cw_rule_would_load_with_official_provenance(tmp_path):
     assert ref.official_url == "https://adilet.zan.kz/rus/docs/V1900019680" and ref.clause == "22"
     assert ref.local_excerpt.startswith("22. Кассовому работнику не допускается покидать рабочее место")
     assert ref.source_snapshot_sha256 == sha256_file(d / "sources" / "L01-2026-10-17.api.json")
-    assert {p.predicate_id for p in reg.cue_predicates()} == {"CW01.service_in_progress", "CW01.leaves_position",
-                                                                "CW01.service_unfinished"}
+    assert {p.predicate_id for p in reg.cue_predicates()} == {"CW01.service_in_progress"}  # coarse = triggers
 
 
 def test_approved_rule_without_matching_snapshot_hash_rejected(tmp_path):

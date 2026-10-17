@@ -521,7 +521,7 @@ rules:
 # patterns; evaluated via scripts/dev_eval.py in candidate (evaluation-only) mode.
 # ---------------------------------------------------------------------------------------------
   - rule_id: CW10
-    version: "0.2.0"
+    version: "0.3.0"
     state: disabled
     disabled_reason: "Кандидат: оценивается на открытом обучающем наборе (D012)."
     symbol: LEAVES_DESK_UNSECURED
@@ -536,7 +536,7 @@ rules:
     nonvisual_prerequisites_en: ["Role is inferred only from position at the cash desk."]
     predicates:
       - {predicate_id: CW10.leaving, kind: trigger, required_state: supported, question_en: "Does the cashier (the person working behind the cash desk with the counting machine) stand up and walk away from the desk toward the door or out of view?", counterexamples_en: ["Standing up or turning to the safe right next to the desk and coming back."]}
-      - {predicate_id: CW10.left_unsecured, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame has the cashier left the desk (chair empty, cashier walking away or gone) while banknotes, a cash bag, papers or other items still lie on the desk, OR a client is still sitting at the desk, OR the safe door is still open?", counterexamples_en: ["The desk is empty apart from fixed equipment (counting machine, laptop, phone, lamp) and the safe is closed.", "The cashier is still sitting at the desk."]}
+      - {predicate_id: CW10.left_unsecured, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame is the cashier walking out through the door or already gone from the room, while banknotes, cash bundles or a cash bag are left on the desk, OR a client is still sitting at the desk, OR the safe door is open?", counterexamples_en: ["Only fixed equipment is on the desk (counting machine, laptop, desk phone, printer, lamp) and the safe is closed.", "The cashier is still at or next to the desk."]}
       - {predicate_id: CW10.desk_visible, kind: visibility, required_state: supported, question_en: "Are the desk surface and the cashier's chair visible?", counterexamples_en: []}
       - {predicate_id: CW10.excl_secured, kind: exclusion, required_state: not_supported, question_en: "Before walking away, did the cashier put the cash/items into the safe or a drawer and close it, leaving only fixed equipment on the desk and no client present?", counterexamples_en: []}
     counterexamples_en: ["Leaving after putting everything into the safe and closing it, with no client present.", "End-of-shift leaving with an empty desk."]

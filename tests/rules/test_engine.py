@@ -29,7 +29,8 @@ def omission_reg(tmp_path_factory):
 def test_t08_negative_clip_no_candidates_no_events(reg):
     m = S.manifest(60)
     events, decided, cands, rules, _ = S.run_pipeline(reg, m, S.square_oracle([(0, 60, "in")]))
-    assert cands == [] and decided == [] and events == []
+    # coarse triggers may propose; verification must reject every candidate
+    assert events == [] and all(d.review_state != "accepted" for d in decided)
 
 
 def test_t08_positive_single_event_anchor_and_evidence(reg):

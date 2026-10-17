@@ -105,6 +105,7 @@ def main() -> int:
                                   limits={"max_duration_sec": settings.max_duration_sec,
                                           "max_pixel_area": settings.max_pixel_area},
                                   config_version="dev")
+            os.environ["CASHWATCH_DEBUG_DECISIONS"] = str(out_root / f"{c['clip']}.decisions.jsonl")
             t0 = time.monotonic()
             row = {"clip": c["clip"], "label": c.get("label"), "label_sec": c.get("label_sec")}
             try:

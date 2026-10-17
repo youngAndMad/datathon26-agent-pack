@@ -392,7 +392,8 @@ def _frame_numbers(text: str, n: int) -> list[int]:
     return sorted({i for i in idx if 1 <= i <= n})
 
 
-def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str]) -> list[PredicateAssessment]:
+def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str],
+               yes_without_frames_is_window: bool = False) -> list[PredicateAssessment]:
     """Parse compact answers: "Q1: yes 3-9", "Q2: no", "Q3: yes 5-9; no 1-4", "Q4: unclear".
     Missing/garbled answers become unknown; out-of-range frame numbers are dropped."""
     n = len(frames)
@@ -417,6 +418,8 @@ def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str]) -
     out: list[PredicateAssessment] = []
     for q, pid in enumerate(predicate_ids, 1):
         yes, no, said_yes, said_no = answers.get(q, ([], [], False, False))
+        if said_yes and not yes and yes_without_frames_is_window:
+            yes = list(range(1, n + 1))  # coarse proposal only; anchors come from verification
         yes_ids = [frames[i - 1].frame_id for i in yes]
         no_ids = [frames[i - 1].frame_id for i in no if i not in yes]
         if said_no and not no_ids and not said_yes:
