@@ -587,7 +587,7 @@ rules:
     approval: {owner: null, date: null, validation_counts: null, notes: "candidate"}
 
   - rule_id: CW12
-    version: "0.2.0"
+    version: "0.3.0"
     state: disabled
     disabled_reason: "Кандидат: оценивается на открытом обучающем наборе (D012)."
     symbol: STAFF_PERSONAL_ITEMS
@@ -602,9 +602,9 @@ rules:
     nonvisual_prerequisites_en: ["Ownership is inferred only from who places/uses the item."]
     predicates:
       - {predicate_id: CW12.personal_item_action, kind: trigger, required_state: supported, question_en: "Does the cashier put a handbag, purse, coat or drink on the desk, drink or eat, or hold or use a mobile phone?", counterexamples_en: ["The client holds a phone or bag.", "The cashier uses the desk telephone, laptop, counting machine or a calculator."]}
-      - {predicate_id: CW12.personal_item_present, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame is a personal item of the cashier visible at the cash desk: a handbag, purse, coat, a cup/bottle/can she drinks from, food, or a smartphone in her hand?", counterexamples_en: ["Bank equipment: counting machine, laptop, desk phone, scanner, calculator, lamp.", "Items belonging to the client."]}
+      - {predicate_id: CW12.personal_item_present, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame is a personal item of the cashier visible at the cash desk: a handbag, purse, coat, a cup/bottle/can she drinks from, food, or a smartphone in her hand?", counterexamples_en: ["Bank collection/cash bags (green or grey bags with tags/seals) are bank property, not personal items.", "Bank equipment: counting machine, laptop, desk phone, scanner, calculator, lamp.", "Items belonging to the client."]}
       - {predicate_id: CW12.desk_visible, kind: visibility, required_state: supported, question_en: "Are the cashier and the desk clearly visible?", counterexamples_en: []}
-      - {predicate_id: CW12.excl_client_or_equipment, kind: exclusion, required_state: not_supported, question_en: "Is the item actually the client's, or bank equipment (counting machine, laptop, desk phone, calculator)?", counterexamples_en: []}
+      - {predicate_id: CW12.excl_client_or_equipment, kind: exclusion, required_state: not_supported, question_en: "Is the item actually bank property or the client's: a green or grey bank collection/cash bag, cash bundles, documents, the counting machine, laptop, desk phone, calculator, or the client's own phone or bag?", counterexamples_en: []}
     counterexamples_en: ["Client's phone or bag.", "Bank equipment on the desk."]
     boundary_notes_en: ["Anchor at the first frame where the cashier's personal item is clearly visible at the desk."]
     visibility_requirements_en: ["Cashier and desk visible."]

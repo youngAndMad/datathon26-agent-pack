@@ -229,6 +229,20 @@ class LocalPerception:
             answered = sum(a.state != "unknown" for a in assessments)
             if answered == 0:
                 raise PipelineError("model_output_invalid", "verify: no statement answered")
+            # Exclusions (compliant alternatives) asked one at a time: inside a list a small model
+            # tends to skip them or echo the other answers.
+            for i, p in enumerate(request.predicates):
+                if ".excl_" not in p.predicate_id or deadline.remaining_sec() < 20:
+                    continue
+                single = request.model_copy(update={"predicates": [p]})
+                sp = P.build_verify_compact_prompt(single)
+                sreq = GenRequest(system=sp.system, segments=sp.segments, images=images, max_tokens=48,
+                                  max_long_side=self.cfg.max_long_side_px, max_pixels=self.cfg.max_pixels,
+                                  context=dict(ctx, kind="verify-exclusion", predicate_ids=[p.predicate_id]))
+                sres = self._generate("verify", sreq, self.cfg.verify_call_cap_sec, deadline)
+                got = parse_cues(sres.text, frames=frames, predicate_ids=[p.predicate_id])[0]
+                if got.state != "unknown":
+                    assessments[i] = got
             return VerificationResult(
                 candidate_id=request.candidate_id, assessments=assessments, plausible_alternatives=[],
                 # Completeness of an opportunity interval cannot be established by this format;
