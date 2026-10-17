@@ -44,7 +44,9 @@ from cashwatch.dto import (
     ts,
 )
 from cashwatch.errors import PipelineError
-from cashwatch.pipeline.planner import CoverageLedger, build_plan, proposal_windows, refinement_times, select_tier
+from cashwatch.pipeline.planner import (
+    CoverageLedger, build_plan, proposal_windows, refinement_times, select_tier, select_verification_frames,
+)
 from cashwatch.pipeline.validate import project_jury_result, validate_result
 from cashwatch.ports import MediaPort, PerceptionPort, ReportingPort, RuleRegistry, RulesPort
 
@@ -128,23 +130,36 @@ def _rule_of(registry: RuleRegistry, predicate_id: str) -> str | None:
 
 def rule_coverage(registry: RuleRegistry, batches: list[ObservationBatch], windows: dict[str, tuple[float, float]],
                   unverified: list[CandidateEvent]) -> list[RuleCoverage]:
-    """Observability per approved rule: windows where every coarse cue of the rule stayed unknown
-    could not be checked. A property of the evidence, not a verdict."""
+    """Coverage of every expected coarse cue in every mandatory window.
+
+    Missing/unknown/conflicting assessments leave the interval unverifiable;
+    optional windows cannot conceal a gap. This is coverage, not a verdict.
+    """
     out = []
+    expected_by_rule: dict[str, set[str]] = {}
+    for cue in registry.cue_predicates():
+        rid = _rule_of(registry, cue.predicate_id)
+        if rid is not None:
+            expected_by_rule.setdefault(rid, set()).add(cue.predicate_id)
+    by_window: dict[str, list[ObservationBatch]] = {}
+    for batch in batches:
+        if batch.window_id in windows:
+            by_window.setdefault(batch.window_id, []).append(batch)
     for rid in registry.approved_rule_ids():
         ref = registry.rule_ref(rid)
+        expected = expected_by_rule.get(rid, set())
         bad: list[tuple[float, float]] = []
-        seen = bad_windows = 0
-        for b in batches:
-            if b.window_id not in windows:
-                continue
-            states = [a.state for a in b.cue_assessments if _rule_of(registry, a.predicate_id) == rid]
-            if not states:
-                continue
-            seen += 1
-            if all(s == "unknown" for s in states):
-                bad_windows += 1
-                bad.append(windows[b.window_id])
+        known = 0
+        for window_id, interval in windows.items():
+            states: dict[str, set[str]] = {}
+            for batch in by_window.get(window_id, []):
+                for assessment in batch.cue_assessments:
+                    if assessment.predicate_id in expected:
+                        states.setdefault(assessment.predicate_id, set()).add(assessment.state)
+            assessed = sum(states.get(pid) in ({"supported"}, {"contradicted"}) for pid in expected)
+            known += assessed
+            if not expected or assessed != len(expected):
+                bad.append(interval)
         bad += [(c.start_sec, c.end_sec) for c in unverified if c.rule_id == rid]
         merged: list[list[float]] = []
         for s, e in sorted(bad):
@@ -153,9 +168,7 @@ def rule_coverage(registry: RuleRegistry, batches: list[ObservationBatch], windo
             else:
                 merged.append([s, e])
         ivals = [Interval(start_sec=ts(s), end_sec=ts(e)) for s, e in merged]
-        if seen == 0:
-            status, note = "partially_checked", "Грубый проход не дал признаков по этому правилу"
-        elif bad_windows == seen:
+        if known == 0:
             status, note = "not_checkable", "Признаки правила не удалось оценить ни в одном окне"
         elif ivals:
             status, note = "partially_checked", "Есть интервалы, где правило нельзя проверить по видео"
@@ -289,8 +302,10 @@ def analyze_job(
         rframes = ctx.media.frames_for_times(
             source, meta, times, work_dir,
             long_side_px=int(sampling.get("refine_long_side_px", sampling["model_long_side_px"])), deadline=deadline)
+        rframes = select_verification_frames(
+            cand, list(frames_by_id.values()), rframes, int(sampling["max_refinement_frames"]))
         for f in rframes:
-            all_frames.setdefault(f.frame_id, f)
+            all_frames[f.frame_id] = f
         vreq = rules.build_verification(cand, rframes, job_id=job.job_id,
                                         max_output_tokens=int(sampling["verify_max_new_tokens"]))
         tv = time.monotonic()
@@ -379,8 +394,9 @@ def _covered_by_accepted(cand: CandidateEvent, decided: list[CandidateEvent]) ->
     for d in decided:
         if d.review_state != "accepted" or d.rule_id != cand.rule_id:
             continue
-        # accepted interval as decided, widened by the refinement context actually inspected
-        lo, hi = d.start_sec - 3.0, d.end_sec + 3.0
+        # Context viewed around an event is not evidence that another event in
+        # that context was already verified. Only the accepted interval counts.
+        lo, hi = d.start_sec, d.end_sec
         overlap = max(0.0, min(hi, cand.end_sec) - max(lo, cand.start_sec))
         if overlap / span >= 0.9:  # near-full containment only; adjacent events stay separate
             return True
@@ -451,10 +467,11 @@ def _render_evidence(
     for ev in events:
         ids = [ev.anchor_frame_id] + [i for i in ev.evidence_frame_ids if i != ev.anchor_frame_id]
         chosen[ev.event_id] = ids[:per_event]
-    need = sorted({i for ids in chosen.values() for i in ids}, key=lambda i: frames[i].relative_sec)
-    missing = [i for i in need if i not in frames]
+    requested = {i for ids in chosen.values() for i in ids}
+    missing = [i for i in requested if i not in frames]
     if missing:
         raise PipelineError("evidence_invalid", "evidence frame id does not resolve")
+    need = sorted(requested, key=lambda i: frames[i].relative_sec)
     rendered = ctx.media.extract_evidence(
         source, meta, [frames[i] for i in need], out_dir, long_side_px=long_side, jpeg_quality=quality,
         deadline=deadline)
@@ -492,10 +509,14 @@ def write_outputs(report: AnalysisReport, out_dir: Path) -> None:
     ev_dir = out_dir / "evidence"
     if ev_dir.exists():
         for p in ev_dir.iterdir():
-            with open(p, "rb") as fh:
+            # Windows FlushFileBuffers requires a writable handle.
+            with open(p, "rb+" if os.name == "nt" else "rb") as fh:
                 os.fsync(fh.fileno())
-    fd = os.open(out_dir, os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+    # Windows CRT cannot open directories as file descriptors. Individual files
+    # above are still flushed/fsynced; POSIX directory durability is unchanged.
+    if os.name != "nt":
+        fd = os.open(out_dir, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)

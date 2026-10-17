@@ -15,7 +15,9 @@ Hard guarantees:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
 from pydantic import ValidationError
@@ -142,6 +144,13 @@ class Registry:
         if src.kind == "official":
             try:
                 doc = json.loads(snap.read_bytes().decode("utf-8"))["document"]
+                url = urlsplit(src.official_url)
+                document_path = re.fullmatch(r"/(?:rus|kaz|eng)/docs/([A-Za-z0-9_]+)/?", url.path)
+                if (url.scheme != "https" or url.netloc != "adilet.zan.kz"
+                        or document_path is None
+                        or document_path.group(1) != doc.get("group_number")):
+                    self._err(f"source {sid}: official URL does not match snapshot document identity")
+                    ok = False
                 if html_to_text(doc["text_content"]) != text:
                     self._err(f"source {sid}: derived text does not match snapshot")
                     ok = False

@@ -28,8 +28,8 @@ def find_tool(name: str, override: str | None = None) -> str | None:
 
 def _env() -> dict[str, str]:
     # Minimal environment: no proxies / network hints are needed for local files.
-    keep = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL")
-    return {k: v for k, v in os.environ.items() if k in keep}
+    keep = {"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"}
+    return {k: v for k, v in os.environ.items() if k.upper() in keep}
 
 
 def run_tool(args: list[str], *, timeout: float, what: str) -> subprocess.CompletedProcess:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -165,6 +166,56 @@ def test_duplicate_predicate_ids_rejected(tmp_path):
     S.edit_registry(d / "registry.test.yaml", fn)
     reg = load_registry(d / "registry.test.yaml", require_approved=True, allow_test=True)
     assert reg.approved_rule_ids() == [] and any("duplicate predicate id" in e for e in reg.health_errors())
+
+
+@pytest.mark.parametrize("official_url", [
+    "https://adilet.zan.kz/rus/docs/V2500037429",
+    "https://adilet.zan.kz/rus/docs/V1900019680_extra",
+    "https://adilet.zan.kz/rus/docs/",
+])
+def test_registry_rejects_wrong_document_url_even_with_valid_snapshot(official_url):
+    # Change only metadata in memory; genuine public snapshots and hashes stay valid.
+    from cashwatch.rules.registry import Registry
+    from cashwatch.rules.schema import RegistryFile
+
+    data = yaml.safe_load(PROD.read_text(encoding="utf-8"))
+    _approve("CW01")(data)
+    data["sources"]["L01"]["official_url"] = official_url
+    reg = Registry(RegistryFile.model_validate(data), PROD.parent, require_approved=True)
+    assert reg.approved_rule_ids() == []
+    assert any("official URL does not match snapshot document identity" in e for e in reg.health_errors())
+
+
+@pytest.mark.parametrize("suffix", ["", "/", "?version=1#z22"])
+def test_registry_accepts_matching_document_identity(suffix):
+    from cashwatch.rules.registry import Registry
+    from cashwatch.rules.schema import RegistryFile
+
+    data = yaml.safe_load(PROD.read_text(encoding="utf-8"))
+    _approve("CW01")(data)
+    data["sources"]["L01"]["official_url"] += suffix
+    reg = Registry(RegistryFile.model_validate(data), PROD.parent, require_approved=True)
+    assert reg.health_errors() == []
+    assert reg.approved_rule_ids() == ["CW01"]
+
+
+def test_registry_rejects_missing_snapshot_document_identity():
+    from cashwatch.rules.registry import Registry
+    from cashwatch.rules.schema import RegistryFile
+
+    data = yaml.safe_load(PROD.read_text(encoding="utf-8"))
+    _approve("CW01")(data)
+    original_loads = json.loads
+
+    def without_identity(raw):
+        parsed = original_loads(raw)
+        parsed["document"].pop("group_number", None)
+        return parsed
+
+    with patch("cashwatch.rules.registry.json.loads", side_effect=without_identity):
+        reg = Registry(RegistryFile.model_validate(data), PROD.parent, require_approved=True)
+    assert reg.approved_rule_ids() == []
+    assert any("snapshot document identity" in e for e in reg.health_errors())
 
 
 def test_missing_registry_file_fails_clearly(tmp_path):

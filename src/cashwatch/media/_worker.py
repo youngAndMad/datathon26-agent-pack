@@ -9,14 +9,14 @@ the child's lifetime. Diagnostics never include media content.
 from __future__ import annotations
 
 import json
-import resource
 import sys
 
 
 def main() -> int:
     try:
+        import resource
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    except (ValueError, OSError):
+    except (ImportError, ValueError, OSError):
         pass
     out = sys.stdout
     sys.stdout = sys.stderr  # stray prints must not corrupt the reply channel

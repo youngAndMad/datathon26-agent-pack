@@ -11,7 +11,7 @@ import math
 from dataclasses import dataclass, field
 
 from cashwatch.errors import PipelineError
-from cashwatch.dto import Coverage, MotionSample, SamplingPlan, SamplingWindow, VideoMetadata, ts
+from cashwatch.dto import CandidateEvent, Coverage, FrameRef, MotionSample, SamplingPlan, SamplingWindow, VideoMetadata, ts
 
 
 def _times(start: float, end: float, fps: float, max_frames: int) -> list[float]:
@@ -133,6 +133,55 @@ def refinement_times(start: float, end: float, sampling: dict, meta: VideoMetada
     s = max(meta.first_frame_sec, start - radius)
     e = min(meta.last_frame_sec, end + radius)
     return _times(s, e, float(sampling["refinement_fps"]), int(sampling["max_refinement_frames"]))
+
+
+def select_verification_frames(candidate: CandidateEvent, coarse_frames: list[FrameRef],
+                               refined_frames: list[FrameRef], max_frames: int) -> list[FrameRef]:
+    """Keep actual cited PTS frames while filling the fixed verification budget.
+
+    Retained coarse frames are not re-requested through rounded floating times.
+    This does not assert dense/complete coverage: the rules engine still checks it.
+    """
+    if max_frames < 1:
+        raise PipelineError("limits_exceeded", "verification frame budget is empty")
+    protected = {candidate.anchor_frame_id} if candidate.anchor_frame_id is not None else set()
+    for assessment in candidate.assessments:
+        if assessment.state in ("supported", "contradicted"):
+            protected.update(assessment.supporting_frame_ids)
+            protected.update(assessment.contradicting_frame_ids)
+    frames = {f.frame_id: f for f in coarse_frames}
+    for frame in refined_frames:
+        old = frames.get(frame.frame_id)
+        if old is not None and (old.source_sha256, old.pts, old.time_base_num, old.time_base_den,
+                                old.relative_sec) != (frame.source_sha256, frame.pts, frame.time_base_num,
+                                                      frame.time_base_den, frame.relative_sec):
+            raise PipelineError("evidence_invalid", "same frame id has inconsistent source timeline")
+        frames[frame.frame_id] = frame  # prefer the newly rendered refinement thumbnail
+    if protected - frames.keys():
+        raise PipelineError("evidence_invalid", "candidate cites an unavailable source frame")
+    if len(protected) > max_frames:
+        raise PipelineError("limits_exceeded", "candidate evidence exceeds verification frame budget")
+    selected = set(protected)
+    refined = sorted({f.frame_id for f in refined_frames}, key=lambda fid: (frames[fid].relative_sec, fid))
+    if refined:
+        for fid in (refined[0], refined[-1]):
+            if len(selected) < max_frames:
+                selected.add(fid)
+    # Spread remaining context frames over the largest temporal gaps; deterministic
+    # tie breaking keeps repeated evaluations stable without exceeding the cap.
+    remaining = set(refined) - selected
+    while remaining and len(selected) < max_frames:
+        fid = max(remaining, key=lambda key: (
+            min(abs(frames[key].relative_sec - frames[kept].relative_sec) for kept in selected),
+            -frames[key].relative_sec, key))
+        selected.add(fid)
+        remaining.remove(fid)
+    result = sorted((frames[fid] for fid in selected), key=lambda f: (f.relative_sec, f.frame_id))
+    if not result:
+        raise PipelineError("evidence_invalid", "no verification frames available")
+    if len({f.source_sha256 for f in result}) != 1:
+        raise PipelineError("evidence_invalid", "verification frames belong to different sources")
+    return result
 
 
 @dataclass

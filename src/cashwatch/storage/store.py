@@ -138,11 +138,21 @@ class JobStore:
         self.settings = settings
         self.clock = clock
         self.root = Path(settings.data_dir).resolve()
+        inherit_acl = os.environ.get("CASHWATCH_WINDOWS_TEST_INHERIT_ACL") == "1"
+        if inherit_acl and (os.name != "nt" or settings.mode != "test"):
+            raise ValueError("Inherited Windows test storage ACL requires Windows test mode")
+        if inherit_acl and not self.root.is_dir():
+            raise ValueError("Inherited Windows test storage requires a preprovisioned root")
+        # Explicit synthetic local testing only. The launcher must provision a
+        # separate root with a verified private inherited ACL. Windows ignores
+        # modes other than 0700 and inherits that ACL; POSIX and production keep
+        # private 0700 creation. Never alter ACLs of existing directories.
+        self._directory_mode = 0o777 if inherit_acl else 0o700
         self.db_path = self.root / "db" / "cashwatch.sqlite3"
         self.tmp_dir = self.root / "tmp"
         self.jobs_dir = self.root / "jobs"
         for d in (self.root, self.db_path.parent, self.tmp_dir, self.jobs_dir):
-            d.mkdir(parents=True, exist_ok=True, mode=0o700)
+            d.mkdir(parents=True, exist_ok=True, mode=self._directory_mode)
         conn = connect(str(self.db_path))
         try:
             self.schema_version = migrate(conn)
@@ -288,7 +298,7 @@ class JobStore:
         Returns the source path relative to data_dir."""
         src = self.tmp_upload_path(reservation_id)
         jdir = self._job_dir(job_id)
-        jdir.mkdir(mode=0o700)
+        jdir.mkdir(mode=self._directory_mode)
         dst = jdir / "source.mov"
         os.replace(src, dst)
         _fsync_dir(jdir)
@@ -449,7 +459,7 @@ class JobStore:
             accepted_at=r["accepted_at"], deadline_at=r["deadline_at"], attempt=r["attempt"],
             lease_generation=gen, config_version=r["config_version"])
         work = self._job_dir(job.job_id) / "work"
-        work.mkdir(parents=True, exist_ok=True, mode=0o700)
+        work.mkdir(parents=True, exist_ok=True, mode=self._directory_mode)
         return ClaimedJobImpl(job=job, work_dir=work)
 
     def heartbeat(self, job_id: str, generation: int, *, stage: Stage | None = None,
@@ -487,13 +497,13 @@ class JobStore:
 
     def output_dir(self, job: JobInput) -> Path:
         tmp, _ = self._out_paths(job.job_id, job.lease_generation)
-        tmp.mkdir(parents=True, exist_ok=True, mode=0o700)
+        tmp.mkdir(parents=True, exist_ok=True, mode=self._directory_mode)
         return tmp
 
     def commit_result(self, job_id: str, generation: int, validated_result_dir: Path,
                       now_utc: str | None = None) -> bool:
         """CAS running(gen) -> succeeded. Idempotent across a crash between promotion rename and
-        the database commit. Returns False when fenced out (stale generation / not running)."""
+        the database commit. Returns False when fenced out or the original deadline expired."""
         tmp, final = self._out_paths(job_id, generation)
         given = Path(validated_result_dir).resolve()
         if given not in (tmp.resolve(), final.resolve()):
@@ -511,16 +521,21 @@ class JobStore:
             raise FileNotFoundError("no staged result for this generation")
         else:
             self._check_result(final, job_id)
-        now_s = iso_utc(self._now(now_utc))
         rel = final.relative_to(self.root).as_posix()
         verdict, n_events, review_required, mode = self._result_summary(final)
         with self._tx() as conn:
+            # Recheck after potentially slow validation/fsync and after acquiring
+            # the transaction lock. The sweeper is not required to win this race.
+            now_s = iso_utc(self._now(now_utc))
             cur = conn.execute(
                 "UPDATE jobs SET state='succeeded', result_path=?, stage='complete', progress_json=NULL,"
                 " finished_at=?, updated_at=?, error_code=NULL, verdict=?, event_count=?, review_required=?,"
-                " mode=?, summary_cached=1 WHERE id=? AND state='running' AND generation=?",
-                (rel, now_s, now_s, verdict, n_events, int(review_required), mode, job_id, generation))
+                " mode=?, summary_cached=1 WHERE id=? AND state='running' AND generation=? AND deadline_at > ?",
+                (rel, now_s, now_s, verdict, n_events, int(review_required), mode, job_id, generation, now_s))
             if cur.rowcount != 1:
+                self._fail_where(conn,
+                    "id=? AND state='running' AND generation=? AND deadline_at <= ?",
+                    (job_id, generation, now_s), "deadline_exceeded", now_s)
                 return False
             conn.execute("DELETE FROM leases WHERE job_id=?", (job_id,))
         return True
@@ -743,7 +758,7 @@ def _fsync_tree(d: Path) -> None:
     for p in sorted(d.rglob("*"), reverse=True):
         with contextlib.suppress(OSError):
             if p.is_file() and not p.is_symlink():
-                fd = os.open(p, os.O_RDONLY)
+                fd = os.open(p, os.O_RDWR if os.name == "nt" else os.O_RDONLY)
                 try:
                     os.fsync(fd)
                 finally:

@@ -10,6 +10,7 @@ resolved from request FrameRefs only.
 from __future__ import annotations
 
 import hashlib
+import logging
 import threading
 import time
 from dataclasses import dataclass, field
@@ -175,7 +176,7 @@ class LocalPerception:
             try:
                 parsed, status, in_tok, out_tok = self._run(
                     "observe", prompt, images, request.max_output_tokens, self.cfg.observe_call_cap_sec,
-                    deadline, parse, ctx, frames, [])
+                    deadline, parse, ctx, frames, [], allow_repair=not pred_ids)
                 observations, limitations = parsed.observations, parsed.limitations
             except PipelineError as e:
                 # Neutral observations are diagnostic; rule cues are the detection input. Without
@@ -324,6 +325,11 @@ class LocalPerception:
         try:
             res = self.gen.generate(req, timeout)
         except GenError as e:
+            # Operational metadata only: never log prompts, frames or model text.
+            logging.getLogger("cashwatch.inference").warning(
+                "generation_failure kind=%s stage=%s call_limit_sec=%.1f",
+                e.kind, kind, timeout,
+            )
             raise self._map(e, deadline_bound=remaining < cap, where=kind) from None
         self.stats.calls.append(CallStats(kind, res.prompt_tokens, res.output_tokens, list(res.visual_tokens),
                                           res.visual_tokens_actual_total, list(res.image_sizes),
@@ -332,7 +338,8 @@ class LocalPerception:
                                           res.prompt_tps, res.generation_tps))
         return res
 
-    def _run(self, kind, prompt, images, max_tokens, cap, deadline, parse, ctx, frames, pred_ids):
+    def _run(self, kind, prompt, images, max_tokens, cap, deadline, parse, ctx, frames, pred_ids,
+             *, allow_repair=True):
         req = GenRequest(system=prompt.system, segments=prompt.segments, images=images,
                          max_tokens=int(max_tokens), max_long_side=self.cfg.max_long_side_px,
                          max_pixels=self.cfg.max_pixels, context=ctx)
@@ -345,6 +352,10 @@ class LocalPerception:
             error = str(first)
             if truncated:
                 error = f"output truncated at the token limit. {error}"
+            if not allow_repair:
+                # With required compact cues following, malformed neutral prose
+                # is diagnostic only. Preserve time for that detection input.
+                raise PipelineError("model_output_invalid", f"{kind}: {error[:200]}") from None
         allowed = ([str(i + 1) for i in range(len(frames))] if self.cfg.frame_label_mode == "index"
                    else [f.frame_id for f in frames])
         rp = P.build_repair_prompt(kind=kind, error=error, previous=res.text,
