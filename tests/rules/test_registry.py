@@ -116,7 +116,7 @@ def test_tampered_snapshot_or_excerpt_rejected(tmp_path):
             e["text"] = e["text"].replace("не допускается", "допускается")
     p.write_text(yaml.safe_dump(ex, allow_unicode=True, sort_keys=False), encoding="utf-8")
     reg = load_registry(d / "registry.yaml", require_approved=True)
-    assert reg.approved_rule_ids() == []
+    assert "CW01" not in reg.approved_rule_ids()  # tampered p.22 excerpt; CW11/CW12 cite p.20/p.12
     assert any("verbatim" in e for e in reg.health_errors())
 
 
