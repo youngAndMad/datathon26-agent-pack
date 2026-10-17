@@ -67,8 +67,10 @@ if (-not $SkipFrontend) {
     } finally { Pop-Location }
 }
 if ($DownloadModel) {
-    & $Py scripts/model_fetch.py
+    & $Py scripts/model_fetch.py --only hf
     Check-Exit 'Downloading model snapshot'
+    & $Py scripts/model_verify.py --key qwen3-vl-4b-instruct
+    Check-Exit 'Verifying model snapshot'
 }
 $SecretDir = "$Repo\secrets"
 New-Item -ItemType Directory -Force -Path $SecretDir | Out-Null
@@ -110,7 +112,8 @@ foreach ($Tool in @('ffmpeg', 'ffprobe')) {
         throw "Missing $Tool. Install FFmpeg and FFprobe on PATH or put both in .tools\ffmpeg\bin."
     }
 }
-& $Py -c "from cashwatch.settings import get_settings; from cashwatch.reporting import create_reporting; from cashwatch.rules import create_rules,load_registry; s=get_settings(); r=load_registry(s.registry_path,require_approved=True,allow_test=False); assert r.approved_rule_ids() and not r.health_errors(), 'Approved rules unavailable'"
-Check-Exit 'Production module and rule preflight (dependencies may be installed but implementation is incomplete)'
-Write-Host 'Dependencies prepared. Start with: powershell -NoProfile -ExecutionPolicy Bypass -File deploy\start.ps1'
+& $Py -c "from cashwatch.reporting import create_reporting; from cashwatch.rules import create_rules,load_registry"
+Check-Exit 'Checking rule and reporting module imports'
+Write-Host 'Dependencies prepared. Local test mode with a real model: powershell -NoProfile -ExecutionPolicy Bypass -File deploy\start.ps1 -Mode test'
+Write-Host 'Production remains the default and requires approved rules.'
 Write-Host 'Installation is not proof of inference quality or production readiness.'

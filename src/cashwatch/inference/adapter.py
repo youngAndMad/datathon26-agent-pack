@@ -60,6 +60,9 @@ class AdapterConfig:
     # Debug for SYNTHETIC benchmarks only: keep raw model text in CallStats. Must stay False
     # for real media (model text about real scenes must not leave the local workspace/logs).
     keep_raw_text: bool = False
+    # "id": frames labelled with their real frame ids; "index": per-call integers 1..N mapped
+    # back by the application (fewer output tokens). Both are validated identically.
+    frame_label_mode: str = "index"
 
 
 @dataclass
@@ -155,13 +158,15 @@ class LocalPerception:
             pred_ids = [p.predicate_id for p in request.cue_predicates]
             self._check_request(frames, pred_ids, window=(request.start_sec, request.end_sec))
             images = self._load_frames(frames, work_dir)
-            prompt = P.build_observe_prompt(request)
+            mode = self.cfg.frame_label_mode
+            prompt = P.build_observe_prompt(request, mode)
+            labels = P.frame_labels(frames, mode) if mode == "index" else None
             ctx = {"kind": "observe", "window_id": request.window_id,
-                   "frame_ids": [f.frame_id for f in frames], "predicate_ids": pred_ids}
+                   "frame_ids": [f.frame_id for f in frames], "predicate_ids": pred_ids, "label_mode": mode}
 
             def parse(text: str):
                 return parse_observation(text, window_id=request.window_id, frames=frames,
-                                         predicate_ids=pred_ids)
+                                         predicate_ids=pred_ids, labels=labels)
 
             parsed, status, in_tok, out_tok = self._run(
                 "observe", prompt, images, request.max_output_tokens, self.cfg.observe_call_cap_sec,
@@ -185,13 +190,15 @@ class LocalPerception:
                 raise PipelineError("internal_error", "malformed candidate interval")
             self._check_request(frames, pred_ids, window=None)
             images = self._load_frames(frames, work_dir)
-            prompt = P.build_verify_prompt(request)
+            mode = self.cfg.frame_label_mode
+            prompt = P.build_verify_prompt(request, mode)
+            labels = P.frame_labels(frames, mode) if mode == "index" else None
             ctx = {"kind": "verify", "candidate_id": request.candidate_id,
-                   "frame_ids": [f.frame_id for f in frames], "predicate_ids": pred_ids}
+                   "frame_ids": [f.frame_id for f in frames], "predicate_ids": pred_ids, "label_mode": mode}
 
             def parse(text: str):
                 return parse_verification(text, candidate_id=request.candidate_id, frames=frames,
-                                          predicate_ids=pred_ids)
+                                          predicate_ids=pred_ids, labels=labels)
 
             parsed, status, _in, _out = self._run(
                 "verify", prompt, images, request.max_output_tokens, self.cfg.verify_call_cap_sec,
@@ -292,14 +299,18 @@ class LocalPerception:
                          max_pixels=self.cfg.max_pixels, context=ctx)
         res = self._generate(kind, req, cap, deadline)
         in_tok, out_tok = res.prompt_tokens, res.output_tokens or 0
+        truncated = res.finish_reason == "length"
         try:
             return parse(res.text), "ok", in_tok, out_tok
         except OutputInvalid as first:
             error = str(first)
-            if res.finish_reason == "length":
-                error = f"output truncated at the token limit; be much shorter. {error}"
+            if truncated:
+                error = f"output truncated at the token limit. {error}"
+        allowed = ([str(i + 1) for i in range(len(frames))] if self.cfg.frame_label_mode == "index"
+                   else [f.frame_id for f in frames])
         rp = P.build_repair_prompt(kind=kind, error=error, previous=res.text,
-                                   frame_ids=[f.frame_id for f in frames], predicate_ids=pred_ids)
+                                   frame_ids=allowed, predicate_ids=pred_ids, truncated=truncated,
+                                   index_mode=self.cfg.frame_label_mode == "index")
         rreq = GenRequest(system=rp.system, segments=rp.segments, images=[],
                           max_tokens=min(int(max_tokens), self.cfg.repair_max_tokens),
                           context=dict(ctx, repair=True, error=error))

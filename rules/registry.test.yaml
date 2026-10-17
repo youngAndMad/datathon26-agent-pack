@@ -63,7 +63,7 @@ rules:
       - "The event is the transition: inside the yellow zone in an earlier frame, then fully outside in a later frame."
     visibility_requirements_en:
       - "Red square and yellow rectangle both visible."
-    temporal: {kind: transition, transition_from: TEST01.red_inside_zone, context_before_sec: 3.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    temporal: {kind: transition, transition_from: TEST01.red_inside_zone, transition_from_negates_anchor: true, context_before_sec: 3.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
     anchor_convention: first_anchor_supported
     evidence_strategy: anchor_then_context
     explanation:

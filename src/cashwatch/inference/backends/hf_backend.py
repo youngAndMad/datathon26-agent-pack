@@ -1,4 +1,4 @@
-"""Offline Qwen3-VL inference on an explicitly selected CPU or CUDA device.
+"""Offline Qwen3-VL inference on CPU, CUDA or Apple MPS.
 
 The supervisor owns deadlines and terminates this child on cancellation. Allocation
 errors deliberately propagate; retrying on another device would reset its budget.
@@ -7,6 +7,7 @@ errors deliberately propagate; retrying on another device would reset its budget
 from __future__ import annotations
 
 import os
+import sys
 import time
 from typing import Any
 
@@ -22,6 +23,19 @@ class HfBackend:
         self.model = None
         self.processor = None
 
+    def _device(self, torch) -> str:
+        want = str(self.options.get("device") or "auto")
+        if want != "auto":
+            return want
+        # Keep Windows auto conservative until GPU capacity is explicitly chosen.
+        if sys.platform == "win32":
+            return "cpu"
+        if torch.cuda.is_available():
+            return "cuda"
+        if torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"
+
     def load(self) -> dict[str, Any]:
         if self.loaded:
             return self.load_info
@@ -31,16 +45,17 @@ class HfBackend:
         import transformers
         from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
-        requested_device = self.options.get("device", "cpu")
-        # The shared configuration defaults to auto. Resolve it conservatively: a
-        # visible GPU says nothing about whether the weights fit its memory.
-        device = torch.device("cpu" if requested_device == "auto" else requested_device)
-        if device.type not in {"cpu", "cuda"}:
-            raise ValueError("HF backend supports explicit cpu or cuda devices")
+        device = torch.device(self._device(torch))
+        if device.type not in {"cpu", "cuda", "mps"}:
+            raise ValueError("HF backend supports cpu, cuda or mps devices")
         if device.type == "cuda" and not torch.cuda.is_available():
             raise RuntimeError("CUDA unavailable; configure device=cpu explicitly")
-        # FP32 is portable on CPU. CUDA FP16 avoids requiring BF16 hardware.
-        dtype = torch.float32 if device.type == "cpu" else torch.float16
+        if device.type == "mps" and not torch.backends.mps.is_available():
+            raise RuntimeError("MPS unavailable; configure device=cpu explicitly")
+        # Preserve the reference BF16 path; Windows CUDA also supports older FP16 GPUs.
+        dtype = (torch.float32 if device.type == "cpu" else
+                 torch.float16 if sys.platform == "win32" and device.type == "cuda" else
+                 torch.bfloat16)
         processor = AutoProcessor.from_pretrained(
             str(path), local_files_only=True, trust_remote_code=False, use_fast=False,
         )
@@ -49,13 +64,17 @@ class HfBackend:
             dtype=dtype, device_map=str(device), attn_implementation="sdpa",
         )
         model.eval()
+        gc = model.generation_config
+        gc.do_sample, gc.temperature, gc.top_p, gc.top_k = False, None, None, None
         self._torch = torch
         self.device = device
         self.model, self.processor = model, processor
+        self.image_token_id = model.config.image_token_id
         ip = processor.image_processor
         self.load_info = {
             "device": str(device), "torch": torch.__version__,
             "transformers": transformers.__version__, "dtype": str(dtype),
+            "attn": "sdpa",
             "image_processor": type(ip).__name__,
             "min_pixels": getattr(ip, "min_pixels", None),
             "max_pixels": self.options.get("max_pixels") or getattr(ip, "max_pixels", None),
@@ -66,7 +85,7 @@ class HfBackend:
     def generate(self, req: GenRequest) -> GenResult:
         if not self.loaded:
             raise RuntimeError("model not loaded")
-        if not isinstance(req.max_tokens, int) or not 1 <= req.max_tokens <= 32768:
+        if type(req.max_tokens) is not int or not 1 <= req.max_tokens <= 32768:
             raise ValueError("max_tokens must be between 1 and 32768")
         # Exactly one occurrence per image preserves the adapter's token accounting.
         indices = [value for kind, value in req.segments if kind == "image"]
@@ -74,21 +93,29 @@ class HfBackend:
             raise ValueError("images must appear exactly once in original order")
         images = decode_images(req.images, req.max_long_side)
         proc, torch = self.processor, self._torch
-        messages = build_messages(req.system, req.segments, images, lambda _: {"type": "image"})
-        prompt = proc.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        kwargs: dict[str, Any] = {}
+        messages = build_messages(req.system, req.segments, images,
+                                  lambda im: {"type": "image", "image": im})
         max_pixels = req.max_pixels or self.options.get("max_pixels")
+        ip = proc.image_processor
+        saved = None
         if max_pixels is not None:
             if int(max_pixels) <= 0:
                 raise ValueError("max_pixels must be positive")
-            kwargs["max_pixels"] = int(max_pixels)
-        inputs = proc(text=[prompt], images=images or None, return_tensors="pt", **kwargs)
+            saved = dict(ip.size)
+            ip.size = {"shortest_edge": saved.get("shortest_edge", 65536),
+                       "longest_edge": int(max_pixels)}
+        try:
+            inputs = proc.apply_chat_template(messages, tokenize=True, add_generation_prompt=True,
+                                             return_dict=True, return_tensors="pt")
+        finally:
+            if saved is not None:
+                ip.size = saved
         grid = inputs.get("image_grid_thw")
         merge = int(proc.image_processor.merge_size) ** 2
         visual = [int(row.prod().item()) // merge for row in grid] if grid is not None else []
         if len(visual) != len(images):
             raise ValueError("processor image count mismatch")
-        actual = int((inputs["input_ids"] == proc.image_token_id).sum().item())
+        actual = int((inputs["input_ids"] == self.image_token_id).sum().item())
         if sum(visual) != actual:
             raise ValueError("processor visual token count mismatch")
         prompt_tokens = int(inputs["input_ids"].shape[-1])
@@ -97,6 +124,8 @@ class HfBackend:
         if cuda:
             torch.cuda.synchronize(self.device)
             torch.cuda.reset_peak_memory_stats(self.device)
+        elif self.device.type == "mps":
+            torch.mps.synchronize()
         start = time.monotonic()
         with torch.inference_mode():
             output = self.model.generate(
@@ -105,6 +134,8 @@ class HfBackend:
             )
         if cuda:
             torch.cuda.synchronize(self.device)
+        elif self.device.type == "mps":
+            torch.mps.synchronize()
         elapsed_ms = int((time.monotonic() - start) * 1000)
         generated = output[0, prompt_tokens:]
         count = int(generated.shape[-1])
@@ -118,5 +149,7 @@ class HfBackend:
             finish_reason="stop" if stopped else "length" if count >= req.max_tokens else "stop",
             visual_tokens=visual, visual_tokens_actual_total=actual,
             image_sizes=[im.size for im in images], gen_ms=elapsed_ms,
-            peak_memory_bytes=int(torch.cuda.max_memory_allocated(self.device)) if cuda else None,
+            peak_memory_bytes=(int(torch.cuda.max_memory_allocated(self.device)) if cuda else
+                               int(torch.mps.driver_allocated_memory()) if self.device.type == "mps" else None),
+            generation_tps=(count / (elapsed_ms / 1000)) if elapsed_ms else None,
         )

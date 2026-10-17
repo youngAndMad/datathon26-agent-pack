@@ -10,15 +10,18 @@ import pytest
 from cashwatch.deadline import Deadline
 from cashwatch.dto import ObservationRequest
 from cashwatch.errors import PipelineError
-from cashwatch.inference import create_perception
+from cashwatch.inference import adapter_config_from_profile, create_perception
 from cashwatch.inference import prompts as P
 from cashwatch.ports import PerceptionPort
 from cashwatch.settings import Settings
 from inference_canned import good_observation, good_verification
 
 
+ID_MODE = adapter_config_from_profile(None, frame_label_mode="id")
+
+
 def _fake(responder=None):
-    p = create_perception(Settings(mode="test", backend="fake"), responder=responder)
+    p = create_perception(Settings(mode="test", backend="fake"), responder=responder, config=ID_MODE)
     p.warmup(timeout_sec=5)
     return p
 
@@ -168,3 +171,29 @@ def test_visual_token_math_matches_measured_processor():
     assert image_tokens(640, 360) == 220
     assert image_tokens(1280, 720, max_long_side=640) == 220
     assert image_tokens(480, 270) == 120  # measured: 16 frames 3775 vs 2175 prompt tokens
+
+
+def test_index_label_mode_prompt_and_roundtrip(obs_request, work_dir):
+    from cashwatch.inference import adapter_config_from_profile
+    reply = json.dumps({"window_id": "w03", "observations": [{"frame_ids": [2, 4], "action": "square moves",
+                                                               "visibility": "clear"}],
+                        "cue_assessments": [{"predicate_id": "p.outside", "state": "supported",
+                                             "supporting_frame_ids": [5]}]})
+    responder, calls = _scripted(reply)
+    p = create_perception(Settings(mode="test", backend="fake"), responder=responder,
+                          config=adapter_config_from_profile(None, frame_label_mode="index"))
+    p.warmup(timeout_sec=5)
+    b = p.observe(obs_request, work_dir, Deadline.in_seconds(30))
+    text = "".join(s for k, s in calls[-1].segments if k == "text")
+    assert "Frame 5 at 4.500s:" in text and "f0004" not in text
+    assert b.prompt_sha256 == P.OBSERVE_PROMPT_SHA256_INDEX != P.OBSERVE_PROMPT_SHA256
+    assert b.observations[0].frame_ids == ["f0001", "f0003"]
+    assert b.cue_assessments[0].supporting_frame_ids == ["f0004"]
+    assert b.cue_assessments[0].interval_start_sec == 4.5
+
+
+def test_default_config_uses_index_labels(obs_request, work_dir):
+    p = create_perception(Settings(mode="test", backend="fake"))
+    p.warmup(timeout_sec=5)
+    b = p.observe(obs_request, work_dir, Deadline.in_seconds(30))
+    assert p.cfg.frame_label_mode == "index" and b.prompt_sha256 == P.OBSERVE_PROMPT_SHA256_INDEX

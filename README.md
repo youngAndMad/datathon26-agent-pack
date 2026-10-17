@@ -1,3 +1,10 @@
+# cashwatch — ForteBank Datathon 26
+
+Local cashier-video analysis service (API + local VLM worker + Russian UI).
+**To run it on your laptop, see [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md).** Status and gates: `coordination/release-gates.md`.
+
+---
+
 # Datathon 26 implementation pack
 
 This is a ready-to-use implementation brief for a local coding-agent team, not an already implemented application. Engineering instructions are in English; the required UI and explanations default to Russian.

@@ -41,7 +41,7 @@ from cashwatch.dto import (
     ts,
 )
 from cashwatch.errors import PipelineError
-from cashwatch.pipeline.planner import CoverageLedger, build_plan, proposal_windows, refinement_times
+from cashwatch.pipeline.planner import CoverageLedger, build_plan, proposal_windows, refinement_times, select_tier
 from cashwatch.pipeline.validate import project_jury_result, validate_result
 from cashwatch.ports import MediaPort, PerceptionPort, ReportingPort, RuleRegistry, RulesPort
 
@@ -131,21 +131,28 @@ def analyze_job(
     check_limits(meta, ctx.limits)
     _timed(run, "probing", t0)
     run.stages.append("probing")
+    _, sampling = select_tier(meta, ctx.profile)  # prevalidated tier fixed for the whole job
 
     # ---------------------------------------------------------------- sampling
     _stage(ctx, run, "sampling")
     t0 = time.monotonic()
-    extra = []
+    # Mandatory uniform coverage first (one decode pass; the media layer computes the motion
+    # signal in the same pass and caches it), then optional motion proposals on top.
+    plan = build_plan(meta, ctx.profile)
+    manifest = ctx.media.sample_video(source, meta, plan, work_dir, deadline=deadline)
+    _validate_manifest(manifest, plan, meta)
     try:
         motion = ctx.media.motion_profile(source, meta, fps=float(sampling["motion_proposal_fps"]), deadline=deadline)
         extra = proposal_windows(motion, meta, sampling, top_k=int(sampling.get("motion_top_k", 4)))
     except PipelineError as e:
         if e.code == "deadline_exceeded":
             raise
+        extra = []
         run.limitations_ru.append("Сигнал движения недоступен; использовано только равномерное покрытие")
-    plan = build_plan(meta, ctx.profile, extra)
-    manifest = ctx.media.sample_video(source, meta, plan, work_dir, deadline=deadline)
-    _validate_manifest(manifest, plan, meta)
+    if extra:
+        manifest = _add_windows(manifest, extra, ctx.media, source, meta, work_dir,
+                                int(sampling["model_long_side_px"]), deadline)
+        plan = build_plan(meta, ctx.profile, extra)
     run.limitations_ru += check_usable(manifest, ctx.media, work_dir)
     ledger = CoverageLedger(profile_id=plan.profile_id, required=list(plan.mandatory_window_ids),
                             proposals=[w.window_id for w in plan.windows if not w.mandatory])
@@ -204,14 +211,22 @@ def analyze_job(
     unverified: list[CandidateEvent] = []
     all_frames: dict[str, FrameRef] = dict(frames_by_id)
     ver_times: list[float] = []
+    suppressed = 0
     for i, cand in enumerate(candidates):
+        if _covered_by_accepted(cand, decided):
+            # Same rule, interval already inside an accepted event: merge() would fold it into
+            # that event, so a second verification is redundant (not an unverified candidate).
+            suppressed += 1
+            ledger.refined.append(cand.candidate_id)
+            continue
         est = (statistics.median(ver_times) if ver_times else 15.0) * 1.3
         if deadline.remaining_sec() < est + evidence_reserve:
             unverified.extend(candidates[i:])
             break
         times = refinement_times(cand.start_sec, cand.end_sec, sampling, meta)
         rframes = ctx.media.frames_for_times(
-            source, meta, times, work_dir, long_side_px=int(sampling["model_long_side_px"]), deadline=deadline)
+            source, meta, times, work_dir,
+            long_side_px=int(sampling.get("refine_long_side_px", sampling["model_long_side_px"])), deadline=deadline)
         for f in rframes:
             all_frames.setdefault(f.frame_id, f)
         vreq = rules.build_verification(cand, rframes, job_id=job.job_id,
@@ -274,6 +289,8 @@ def analyze_job(
         coverage=coverage,
         completed_stages=list(run.stages),
         visual_limitations_ru=_dedup(run.limitations_ru)[:20],
+        coverage_notice_ru=ctx.reporting.coverage_notice_ru(
+            jury.verdict, _dedup(run.limitations_ru + coverage.visual_limitations)[:5]),
         events=report_events,
         review_notes=run.notes[:200],
         jury_result=jury,
@@ -283,6 +300,19 @@ def analyze_job(
     write_outputs(report, out_dir)
     _timed(run, "committing", t0)
     return report
+
+
+def _covered_by_accepted(cand: CandidateEvent, decided: list[CandidateEvent]) -> bool:
+    span = max(cand.end_sec - cand.start_sec, 1e-6)
+    for d in decided:
+        if d.review_state != "accepted" or d.rule_id != cand.rule_id:
+            continue
+        # accepted interval as decided, widened by the refinement context actually inspected
+        lo, hi = d.start_sec - 3.0, d.end_sec + 3.0
+        overlap = max(0.0, min(hi, cand.end_sec) - max(lo, cand.start_sec))
+        if overlap / span >= 0.9:  # near-full containment only; adjacent events stay separate
+            return True
+    return False
 
 
 def _dedup(items: list[str]) -> list[str]:
@@ -304,6 +334,20 @@ def _validate_manifest(manifest: FrameManifest, plan, meta: VideoMetadata) -> No
     # First/last playable frames must be covered (within one second of the clip ends).
     if first - meta.first_frame_sec > 1.0 or meta.last_frame_sec - last > 1.0:
         raise PipelineError("internal_error", "sampling does not cover clip endpoints")
+
+
+def _add_windows(manifest: FrameManifest, windows, media: MediaPort, source: Path, meta: VideoMetadata,
+                 work_dir: Path, long_side: int, deadline: Deadline) -> FrameManifest:
+    frames = {f.frame_id: f for f in manifest.frames}
+    wf = dict(manifest.window_frames)
+    for w in windows:
+        got = media.frames_for_times(source, meta, list(w.requested_sample_times), work_dir,
+                                     long_side_px=long_side, deadline=deadline)
+        for f in got:
+            frames.setdefault(f.frame_id, f)
+        wf[w.window_id] = [f.frame_id for f in got]
+    ordered = sorted(frames.values(), key=lambda f: f.relative_sec)
+    return manifest.model_copy(update={"frames": ordered, "window_frames": wf})
 
 
 def _check_batch(batch: ObservationBatch, req: ObservationRequest) -> None:

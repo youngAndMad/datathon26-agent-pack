@@ -108,7 +108,8 @@ def create_app(settings: Settings, store: JobStore | None = None, *,
     @app.get("/readyz", include_in_schema=False)
     def readyz():
         ok = store.worker_ready() and store.storage_writable()
-        return JSONResponse({"status": "ready" if ok else "not_ready"}, status_code=200 if ok else 503)
+        return JSONResponse({"status": "ready" if ok else "not_ready", **store.worker_identity()},
+                            status_code=200 if ok else 503)
 
     # ------------------------------------------------------------------ upload
 

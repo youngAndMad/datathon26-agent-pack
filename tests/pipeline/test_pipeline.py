@@ -172,3 +172,17 @@ def test_validator_rejects_tampering(tmp_path):
     with pytest.raises(PipelineError):  # verdict mismatch
         bad = report.jury_result.model_copy(update={"verdict": "no_violation"})
         validate_result(report.model_copy(update={"jury_result": bad}), out, reg)
+
+
+def test_tier_selection_is_prevalidated_and_fits_budget():
+    from cashwatch.pipeline.planner import count_coarse_windows, select_tier
+    prof = {**PROFILE, "budget_sec": {"observe_total": 130}, "sampling_tiers": [
+        {"tier_id": "dense", "est_window_sec": 20.0},
+        {"tier_id": "sparse", "window_sec": 24, "uniform_fps": 0.67, "est_window_sec": 12.0},
+    ]}
+    pid_short, s_short = select_tier(fakes.meta(30.0), prof)
+    pid_long, s_long = select_tier(fakes.meta(145.0), prof)
+    assert pid_short.endswith("/dense") and pid_long.endswith("/sparse")
+    assert count_coarse_windows(145.0, s_long) * 12.0 <= 130
+    with pytest.raises(PipelineError):
+        select_tier(fakes.meta(300.0), {**prof, "sampling_tiers": prof["sampling_tiers"][:1]})

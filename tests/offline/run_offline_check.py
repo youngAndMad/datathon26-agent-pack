@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import math
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,8 @@ sys.path.insert(0, str(ROOT))
 from tests.integration.harness import (  # noqa: E402
     PY, TEST_REGISTRY, Service, load_qa_client, pending_components, synthetic_clip, tiny_mov,
 )
+
+AUDIT_DIR = Path(__file__).resolve().parent / "audit"
 
 PROBE = r"""
 import socket, json
@@ -83,6 +86,25 @@ def sandbox_self_test(profile: Path, rep: Report) -> bool:
     rep.add("sandbox_self_test", "PASS" if ok else "FAIL",
             "loopback allowed; TCP/UDP egress and DNS denied" if ok else f"unexpected probe result {res}",
             probe=res)
+    return ok
+
+
+def audit_self_test(profile: Path, tmp: Path, rep: Report) -> bool:
+    """Positive control: the audit hook must record a sandboxed non-loopback attempt (and only that)."""
+    import os
+    f = tmp / "audit-selftest.jsonl"
+    env = {**{k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "TMPDIR")},
+           "PYTHONPATH": str(AUDIT_DIR), "CW_EGRESS_AUDIT": str(f)}
+    code = ("import socket\nsrv=socket.socket(); srv.bind(('127.0.0.1',0)); srv.listen(1)\n"
+            "socket.create_connection(srv.getsockname(), 1).close()\n"
+            "try: socket.create_connection(('192.0.2.1', 443), 1)\nexcept OSError: pass\n")
+    subprocess.run(["sandbox-exec", "-f", str(profile), PY, "-c", code], env=env, timeout=60,
+                   capture_output=True)
+    lines = f.read_text().splitlines() if f.exists() else []
+    ok = bool(lines) and all("192.0.2.1" in ln for ln in lines)
+    rep.add("egress_audit_self_test", "PASS" if ok else "FAIL",
+            "audit hook records non-loopback attempts and ignores loopback" if ok
+            else f"audit hook control failed ({len(lines)} records)")
     return ok
 
 
@@ -151,21 +173,24 @@ def t21(profile: Path, backend: str, tmp: Path, rep: Report) -> None:
 
 
 def denials_since(start_epoch: float, pids: set[int]) -> int | None:
-    """Count unified-log sandbox network-outbound denials for the given pids (None if unreadable)."""
-    mins = max(1, int((time.time() - start_epoch) / 60) + 1)
+    """Count kernel Sandbox network-outbound denials since start_epoch for the service processes
+    (by pid, or by a python process name: supervisor children have pids we never saw).
+    Returns None if the unified log cannot be read."""
+    import re
+    since = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(math.ceil(start_epoch)))
     try:
-        r = subprocess.run(["log", "show", "--last", f"{mins}m", "--style", "compact", "--predicate",
-                            'eventMessage CONTAINS "deny" AND eventMessage CONTAINS "network-outbound"'],
+        r = subprocess.run(["log", "show", "--start", since, "--style", "compact", "--predicate",
+                            'sender == "Sandbox" AND eventMessage CONTAINS "network-outbound"'],
                            capture_output=True, text=True, timeout=120)
     except (subprocess.TimeoutExpired, OSError):
         return None
     if r.returncode != 0:
         return None
-    # Supervisor children (model process) have pids we never saw, so match by pid OR by a python
-    # process name within the window (the self-test probe ran before start_epoch).
+    rx = re.compile(r"Sandbox: (\S+)\((\d+)\) deny\(\d+\) network-outbound")
     n = 0
     for ln in r.stdout.splitlines():
-        if any(f"({p})" in ln for p in pids) or "python" in ln.lower():
+        m = rx.search(ln)
+        if m and (int(m.group(2)) in pids or m.group(1).lower().startswith("python")):
             n += 1
     return n
 
@@ -219,8 +244,12 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 qa = load_qa_client()
                 clip = synthetic_clip(a.clip, tmp / "media") or tiny_mov(tmp / "media" / "tiny.mov")
-                svc = Service(tmp / "svc", mode="test", backend=a.backend, registry=TEST_REGISTRY)
+                audit = tmp / "egress-audit.jsonl"
+                audit_ok = audit_self_test(a.profile, tmp, rep)
+                svc = Service(tmp / "svc", mode="test", backend=a.backend, registry=TEST_REGISTRY,
+                              extra_env={"PYTHONPATH": str(AUDIT_DIR), "CW_EGRESS_AUDIT": str(audit)})
                 pids: set[int] = set()
+                time.sleep(1.5)  # `log show --start` has 1 s granularity: keep the self-tests out
                 started = time.time()
                 lock = contextlib.nullcontext()
                 if a.backend != "fake":
@@ -230,12 +259,18 @@ def main(argv: list[str] | None = None) -> int:
                     for i in (1, 2):  # second round = full cold process restart
                         cold_start_round(i, svc, a.profile, clip, qa, rep, a.ready_timeout, pids,
                                          require_source=True)
-                n = denials_since(started, pids)
-                if n is None:
-                    rep.add("t20_no_denials", "BLOCKED", "unified log not readable; attempted-connection audit unavailable")
+                recs = audit.read_text().splitlines() if audit.exists() else []
+                if not audit_ok:
+                    rep.add("t20_no_egress_attempts", "FAIL", "audit hook not demonstrated; cannot certify")
                 else:
-                    rep.add("t20_no_denials", "PASS" if n == 0 else "FAIL",
-                            f"{n} sandbox network-outbound denials logged for service pids")
+                    targets = sorted({json.loads(r)["event"] + " " + json.loads(r)["target"] for r in recs})
+                    rep.add("t20_no_egress_attempts", "PASS" if not recs else "FAIL",
+                            "no Python-level non-loopback connect/sendto/DNS attempt by service processes"
+                            if not recs else f"{len(recs)} attempt(s): {targets[:5]}")
+                # Secondary, best effort: kernel sandbox denials (often not logged for sandbox-exec).
+                n = denials_since(started, pids)
+                if n:
+                    rep.add("t20_kernel_denials", "FAIL", f"{n} kernel sandbox network-outbound denials for service processes")
                 if a.backend == "fake":
                     rep.add("t20_real_inference", "BLOCKED", "fake backend: plumbing only, not a T20 pass")
     summary = {"items": rep.items, "exit_code": rep.exit_code(), "backend": a.backend}

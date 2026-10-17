@@ -28,9 +28,15 @@ stop_one() {  # name
     sleep 0.25
   done
   if kill -0 "$pid" 2>/dev/null; then
-    echo "$name: did not exit after ${GRACE}s, sending SIGKILL" >&2
+    echo "$name: did not exit after ${GRACE}s, sending SIGKILL (including child processes)" >&2
+    # The worker supervisor owns a model child; a SIGKILLed supervisor would orphan it.
+    pkill -KILL -P "$pid" 2>/dev/null || true
     kill -KILL "$pid" 2>/dev/null || true
     sleep 0.5
+  fi
+  # Children that outlived a clean supervisor exit (should not happen) are reported, not ignored.
+  if pgrep -P "$pid" >/dev/null 2>&1; then
+    echo "$name: child processes of $pid still running: $(pgrep -P "$pid" | tr '\n' ' ')" >&2; rc=1
   fi
   if kill -0 "$pid" 2>/dev/null; then echo "$name: still alive (pid $pid)" >&2; rc=1; return; fi
   rm -f "$pidf"

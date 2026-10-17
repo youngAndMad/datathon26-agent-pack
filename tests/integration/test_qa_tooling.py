@@ -163,3 +163,19 @@ def test_t28_settings_refuse_fake_in_production():
     assert any("fake" in e for e in s.production_errors())
     t = Settings(mode="test", backend="fake")
     assert not any("fake" in e for e in t.production_errors())
+
+
+def test_submission_secret_scan_detects_planted_values(tmp_path, monkeypatch, capsys):
+    sc = _load("qa_submission_check", ROOT / "scripts" / "qa_submission_check.py")
+    monkeypatch.setattr(sc, "ROOT", tmp_path)
+    fake_hf = "hf_" + "A1b2C3d4E5" * 4
+    (tmp_path / "a.py").write_text(f'TOKEN = "{fake_hf}"\n')
+    (tmp_path / "b.txt").write_text("JURY_API_KEY" + "=" + "Zq81kd93" + "hf74mzpq02lsx7c1vv93\n")  # built at runtime
+    (tmp_path / "ok.md").write_text("CASHWATCH_API_KEY_FILE=/path/to/file\napi_key = example-placeholder-value-here\n")
+    (tmp_path / ".env").write_text("X=1\n")
+    c = sc.Checks()
+    sc.scan_secrets(["a.py", "b.txt", "ok.md", ".env"], "t", c)
+    status, _, note = c.rows[0]
+    assert status == "FAIL"
+    assert "a.py:1" in note and "b.txt:1" in note and ".env" in note and "ok.md" not in note
+    assert fake_hf not in capsys.readouterr().out  # values are never printed
