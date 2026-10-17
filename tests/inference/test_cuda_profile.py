@@ -46,6 +46,7 @@ class CudaProfileTests(unittest.TestCase):
                     create_perception(self.settings)
         self.child.assert_not_called()
 
+    @unittest.skipIf(os.name != "nt", "patches os.name globally; pathlib breaks off Windows")
     def test_default_cpu_path_remains_unquantized(self):
         self.settings.device = "cpu"
         with patch.dict(os.environ, {"CASHWATCH_WINDOWS_CUDA_NF4": "0"}):
