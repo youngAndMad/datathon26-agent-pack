@@ -46,11 +46,12 @@ class SelectionTests(unittest.TestCase):
         result = select_verification_frames(candidate(old.frame_id), [old], [new], 1)
         self.assertEqual(result, [new])
 
-    def test_over_budget_protected_frames_fail(self):
+    def test_over_budget_protected_frames_are_thinned_not_failed(self):
+        # Real clips: a coarse cue spanning a 13-16 frame window exceeds the verification budget;
+        # failing usable footage is worse than an even temporal spread of the cited frames.
         frames = [frame(t) for t in range(3)]
-        with self.assertRaises(PipelineError) as caught:
-            select_verification_frames(candidate(None, [f.frame_id for f in frames]), frames, [], 2)
-        self.assertEqual(caught.exception.code, "limits_exceeded")
+        result = select_verification_frames(candidate(None, [f.frame_id for f in frames]), frames, [], 2)
+        self.assertEqual([f.frame_id for f in result], [frames[0].frame_id, frames[2].frame_id])
 
     def test_missing_protected_frame_fails(self):
         with self.assertRaises(PipelineError) as caught:

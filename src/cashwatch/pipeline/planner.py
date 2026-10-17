@@ -144,11 +144,14 @@ def select_verification_frames(candidate: CandidateEvent, coarse_frames: list[Fr
     """
     if max_frames < 1:
         raise PipelineError("limits_exceeded", "verification frame budget is empty")
-    protected = {candidate.anchor_frame_id} if candidate.anchor_frame_id is not None else set()
+    anchor = {candidate.anchor_frame_id} if candidate.anchor_frame_id is not None else set()
+    supporting: set[str] = set()
+    contradicting: set[str] = set()
     for assessment in candidate.assessments:
         if assessment.state in ("supported", "contradicted"):
-            protected.update(assessment.supporting_frame_ids)
-            protected.update(assessment.contradicting_frame_ids)
+            supporting.update(assessment.supporting_frame_ids)
+            contradicting.update(assessment.contradicting_frame_ids)
+    protected = anchor | supporting | contradicting
     frames = {f.frame_id: f for f in coarse_frames}
     for frame in refined_frames:
         old = frames.get(frame.frame_id)
@@ -160,7 +163,21 @@ def select_verification_frames(candidate: CandidateEvent, coarse_frames: list[Fr
     if protected - frames.keys():
         raise PipelineError("evidence_invalid", "candidate cites an unavailable source frame")
     if len(protected) > max_frames:
-        raise PipelineError("limits_exceeded", "candidate evidence exceeds verification frame budget")
+        # A coarse cue spanning a whole window cites more frames than the verification budget.
+        # Failing usable footage would be worse than thinning: keep the anchor, then supporting,
+        # then contradicting frames, each spread evenly in time. The rules engine still checks
+        # completeness/visibility on what is actually verified.
+        def spread(ids: set[str], k: int) -> set[str]:
+            ordered = sorted(ids, key=lambda fid: (frames[fid].relative_sec, fid))
+            if k <= 0 or not ordered:
+                return set()
+            if len(ordered) <= k:
+                return set(ordered)
+            return {ordered[round(i * (len(ordered) - 1) / (k - 1))] for i in range(k)} if k > 1 else {ordered[0]}
+        keep = set(anchor)
+        keep |= spread(supporting - keep, max_frames - len(keep))
+        keep |= spread(contradicting - keep, max_frames - len(keep))
+        protected = keep
     selected = set(protected)
     refined = sorted({f.frame_id for f in refined_frames}, key=lambda fid: (frames[fid].relative_sec, fid))
     if refined:

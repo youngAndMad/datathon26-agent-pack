@@ -16,6 +16,8 @@ neutral perception -> tri-state predicates -> curated approved rules -> explicit
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from collections import defaultdict
 from collections.abc import Iterable
@@ -280,6 +282,14 @@ class Rules:
 
     def _finish(self, cand: CandidateEvent, state: str, reasons: list[str]) -> CandidateEvent:
         out = cand.model_copy(update={"review_state": state, "rejection_reasons": [_short(r, 400) for r in reasons][:30]})
+        trace = os.environ.get("CASHWATCH_DEBUG_DECISIONS")  # dev evaluation only (local file)
+        if trace:
+            with open(trace, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"candidate": out.candidate_id, "rule": out.rule_id, "state": state,
+                                     "start": out.start_sec, "end": out.end_sec, "reasons": reasons[:10],
+                                     "assessments": [(a.predicate_id, a.state, len(a.supporting_frame_ids),
+                                                      len(a.contradicting_frame_ids)) for a in out.assessments]},
+                                    ensure_ascii=False) + "\n")
         if state != "accepted":
             word = "отклонён" if state == "rejected" else "не подтверждён (неопределённость)"
             self._note("unresolved_candidate", out.start_sec, out.end_sec,

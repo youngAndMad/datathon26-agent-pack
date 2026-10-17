@@ -93,7 +93,8 @@ def test_frames_interleaved_with_labels_in_order(obs_request, work_dir):
 def test_one_repair_then_ok(obs_request, work_dir):
     responder, calls = _scripted("```json\n{\"window_id\": \"w03\", \"observations\": [", good_observation())
     p = _fake(responder)
-    b = p.observe(obs_request, work_dir, Deadline.in_seconds(30))
+    no_cues = obs_request.model_copy(update={"cue_predicates": []})  # with cues, neutral output is not repaired
+    b = p.observe(no_cues, work_dir, Deadline.in_seconds(30))
     assert b.parse_status == "repaired"
     repair = calls[-1]
     assert repair.images == [] and repair.context.get("repair") is True
@@ -131,12 +132,25 @@ def test_malformed_twice_is_model_output_invalid(ver_request, work_dir):
 
 
 def test_verify_ok(ver_request, work_dir):
-    responder, calls = _scripted(good_verification())
+    responder, calls = _scripted("Q1: yes 4-6; no 1-3\nQ2: no")
     p = _fake(responder)
     r = p.verify(ver_request, work_dir, Deadline.in_seconds(30))
-    assert r.schema_valid and r.parse_status == "ok" and r.prompt_sha256 == P.VERIFY_PROMPT_SHA256
-    assert r.assessments[0].interval_start_sec == 3.0
+    assert r.schema_valid and r.parse_status == "ok" and r.prompt_sha256 == P.VERIFY_COMPACT_SHA256
+    a, b = r.assessments
+    assert a.state == "supported" and a.interval_start_sec == 3.0
+    assert a.supporting_frame_ids == ["f0003", "f0004", "f0005"] and a.contradicting_frame_ids == ["f0000", "f0001", "f0002"]
+    assert b.state == "contradicted"
+    assert r.interval_complete is False  # compact format never claims a complete opportunity interval
     assert len(calls[-1].images) == len(ver_request.frames)
+    text = "".join(s for k, s in calls[-1].segments if k == "text")
+    assert "Q1:" in text and "Q2:" in text and "Frame 1 at" in text
+
+
+def test_verify_ignores_out_of_range_frames_and_missing_lines(ver_request, work_dir):
+    responder, _ = _scripted("Q1: yes 2, 99\ngarbage")
+    p = _fake(responder)
+    r = p.verify(ver_request, work_dir, Deadline.in_seconds(30))
+    assert r.assessments[0].supporting_frame_ids == ["f0001"] and r.assessments[1].state == "unknown"
 
 
 def test_frame_path_containment_and_hash(obs_request, work_dir, tmp_path):

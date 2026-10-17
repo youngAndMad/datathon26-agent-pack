@@ -194,7 +194,8 @@ class LocalPerception:
                                   max_pixels=self.cfg.max_pixels,
                                   context=dict(ctx, kind="cue", predicate_ids=pred_ids))
                 cres = self._generate("cue", creq, self.cfg.observe_call_cap_sec, deadline)
-                cues = parse_cues(cres.text, frames=frames, predicate_ids=pred_ids)
+                cues = parse_cues(cres.text, frames=frames, predicate_ids=pred_ids,
+                                  yes_without_frames_is_window=True)
                 in_tok += cres.prompt_tokens or 0
                 out_tok += cres.output_tokens or 0
             return ObservationBatch(
@@ -217,27 +218,66 @@ class LocalPerception:
             self._check_request(frames, pred_ids, window=None)
             images = self._load_frames(frames, work_dir)
             mode = self.cfg.frame_label_mode
-            prompt = P.build_verify_prompt(request, mode)
-            labels = P.frame_labels(frames, mode) if mode == "index" else None
+            # Compact numbered statements (small models fail large JSON schemas, see D013).
+            prompt = P.build_verify_compact_prompt(request)
             ctx = {"kind": "verify", "candidate_id": request.candidate_id,
-                   "frame_ids": [f.frame_id for f in frames], "predicate_ids": pred_ids, "label_mode": mode}
-
-            def parse(text: str):
-                return parse_verification(text, candidate_id=request.candidate_id, frames=frames,
-                                          predicate_ids=pred_ids, labels=labels)
-
-            parsed, status, _in, _out = self._run(
-                "verify", prompt, images, request.max_output_tokens, self.cfg.verify_call_cap_sec,
-                deadline, parse, ctx, frames, pred_ids)
+                   "frame_ids": [f.frame_id for f in frames], "predicate_ids": pred_ids, "label_mode": "index"}
+            req = GenRequest(system=prompt.system, segments=prompt.segments, images=images,
+                             max_tokens=min(int(request.max_output_tokens), 24 + 40 * len(pred_ids)),
+                             max_long_side=self.cfg.max_long_side_px, max_pixels=self.cfg.max_pixels, context=ctx)
+            res = self._generate("verify", req, self.cfg.verify_call_cap_sec, deadline)
+            assessments, status = self._read_verify(res.text, request, frames, pred_ids)
+            if assessments is None:
+                # One bounded repair (text only): reformat the previous answer, add no facts.
+                n = len(pred_ids)
+                rreq = GenRequest(
+                    system=("You fix the format of an earlier answer about video frames. Do not add facts. "
+                            "Rewrite it as one line per statement: Q<number>: yes <frames>; no <frames> "
+                            "or Q<number>: unclear. Frames are integers 1 to " + str(len(frames)) + "."),
+                    segments=[("text", f"There are {n} statements (Q1 to Q{n}).\nPrevious answer:\n"
+                                       f"{res.text[:2000]}\nRewrite it now.")],
+                    images=[], max_tokens=24 + 40 * n,
+                    context=dict(ctx, repair=True, error="no statement answered"))
+                rres = self._generate("verify-repair", rreq, self.cfg.repair_call_cap_sec, deadline)
+                assessments, _ = self._read_verify(rres.text, request, frames, pred_ids)
+                status = "repaired"
+                if assessments is None:
+                    raise PipelineError("model_output_invalid", "verify: no statement answered")
+            # Exclusions (compliant alternatives) asked one at a time: inside a list a small model
+            # tends to skip them or echo the other answers.
+            for i, p in enumerate(request.predicates):
+                if ".excl_" not in p.predicate_id or deadline.remaining_sec() < 20:
+                    continue
+                single = request.model_copy(update={"predicates": [p]})
+                sp = P.build_verify_compact_prompt(single)
+                sreq = GenRequest(system=sp.system, segments=sp.segments, images=images, max_tokens=48,
+                                  max_long_side=self.cfg.max_long_side_px, max_pixels=self.cfg.max_pixels,
+                                  context=dict(ctx, kind="verify-exclusion", predicate_ids=[p.predicate_id]))
+                sres = self._generate("verify", sreq, self.cfg.verify_call_cap_sec, deadline)
+                got = parse_cues(sres.text, frames=frames, predicate_ids=[p.predicate_id])[0]
+                if got.state != "unknown":
+                    assessments[i] = got
             return VerificationResult(
-                candidate_id=request.candidate_id, assessments=parsed.assessments,
-                plausible_alternatives=parsed.plausible_alternatives,
-                interval_complete=parsed.interval_complete,
-                visibility_sufficient=parsed.visibility_sufficient, schema_valid=True,
-                parse_status=status, limitations=parsed.limitations,
-                elapsed_ms=int((time.monotonic() - t0) * 1000), model_version=self.model_version,
-                prompt_sha256=prompt.prompt_sha256,
+                candidate_id=request.candidate_id, assessments=assessments, plausible_alternatives=[],
+                # Completeness of an opportunity interval cannot be established by this format;
+                # stays False so omission rules (requires_complete_interval) remain unresolved.
+                interval_complete=False, visibility_sufficient=True, schema_valid=True,  # visibility via rule predicates
+                parse_status=status, limitations=[], elapsed_ms=int((time.monotonic() - t0) * 1000),
+                model_version=self.model_version, prompt_sha256=prompt.prompt_sha256,
             )
+
+    def _read_verify(self, text: str, request: VerificationRequest, frames: list[FrameRef], pred_ids: list[str]):
+        """Compact lines first; legacy JSON verification objects are still accepted."""
+        a = parse_cues(text, frames=frames, predicate_ids=pred_ids)
+        if any(x.state != "unknown" for x in a):
+            return a, "ok"
+        try:
+            parsed = parse_verification(text, candidate_id=request.candidate_id, frames=frames,
+                                        predicate_ids=pred_ids, labels=None)
+        except OutputInvalid:
+            return None, "ok"
+        by_id = {x.predicate_id: x for x in parsed.assessments}
+        return [by_id.get(p, a[i]) for i, p in enumerate(pred_ids)], "ok"
 
     def close(self) -> None:
         with self._lock:

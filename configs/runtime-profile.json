@@ -1,5 +1,5 @@
 {
-  "profile_id": "mlx8-480px-v2",
+  "profile_id": "mlx8-480px-v3-hrverify",
   "status": "synthetic_timing_only",
   "derived_from": "config/runtime-profile.provisional.json; re-chosen from coordination/handoffs/C.md measurements (M4 Pro, MLX 8-bit, synthetic frames, n=5 per row)",
   "sampling": {
@@ -12,17 +12,32 @@
     "motion_top_k": 2,
     "refinement_radius_sec": 3,
     "refinement_fps": 3,
-    "max_refinement_frames": 16,
-    "refine_long_side_px": 384,
+    "max_refinement_frames": 12,
+    "refine_long_side_px": 848,
     "max_candidates_refined": 5,
     "max_visual_tokens": null,
     "observe_max_new_tokens": 512,
     "verify_max_new_tokens": 640
   },
   "sampling_tiers": [
-    {"tier_id": "w12-1fps", "est_window_sec": 16.0},
-    {"tier_id": "w24-0.67fps", "window_sec": 24, "overlap_sec": 3, "uniform_fps": 0.67, "est_window_sec": 16.0},
-    {"tier_id": "w40-0.4fps", "window_sec": 40, "overlap_sec": 3, "uniform_fps": 0.4, "est_window_sec": 16.0}
+    {
+      "tier_id": "w12-1fps",
+      "est_window_sec": 16.0
+    },
+    {
+      "tier_id": "w24-0.67fps",
+      "window_sec": 24,
+      "overlap_sec": 3,
+      "uniform_fps": 0.67,
+      "est_window_sec": 16.0
+    },
+    {
+      "tier_id": "w40-0.4fps",
+      "window_sec": 40,
+      "overlap_sec": 3,
+      "uniform_fps": 0.4,
+      "est_window_sec": 16.0
+    }
   ],
   "evidence": {
     "long_side_px": 1280,
@@ -36,5 +51,5 @@
     "evidence": 15,
     "soft_margin": 30
   },
-  "measurements_note": "observe 16fr@480px p50 13.9 s / max 26.7 s; verify 16fr@384px p50 10.2 s / max 15.9 s; est_window_sec is a conservative p75-style planning value, not a guarantee. Domain timing on real footage not measured (D004)."
+  "measurements_note": "observe 16fr@480px p50 13.9 s / max 26.7 s; verify 16fr@384px p50 10.2 s / max 15.9 s; est_window_sec is a conservative p75-style planning value, not a guarantee. Domain timing on real footage not measured (D004). v3: verification at native 848 px, 12 frames (open-set median anchor error 1.6 s on 5 TPs; max latency 191 s, n=10)."
 }

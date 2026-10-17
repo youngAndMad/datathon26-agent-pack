@@ -20,8 +20,10 @@ class MergedRulesTests(unittest.TestCase):
 
     def test_production_still_requires_human_approval(self):
         registry = load_registry(ROOT / 'rules/registry.yaml', require_approved=True, allow_test=False)
-        self.assertFalse(registry.approved_rule_ids())
-        self.assertTrue(any('no approved rules' in e for e in registry.health_errors()))
+        # Production exposes only rules with a recorded human approval and validation counts (D014).
+        for rid in registry.approved_rule_ids():
+            approval = registry.spec(rid).approval
+            self.assertTrue(approval.owner and approval.date and approval.validation_counts)
         self.assertFalse(any('sha256 mismatch' in e for e in registry.health_errors()), registry.health_errors())
 
 

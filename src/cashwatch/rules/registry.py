@@ -78,7 +78,9 @@ class Registry:
         out: list[PredicateDefinition] = []
         for rid in self.approved_rule_ids():
             for p in self._approved[rid].predicates:
-                if p.kind in ("trigger", "decisive", "completion"):
+                # Coarse pass asks only triggers (one short question per rule keeps a small model
+                # accurate); decisive/exclusion predicates are evaluated in verification.
+                if p.kind == "trigger":
                     out.append(_definition(p))
         return out
 

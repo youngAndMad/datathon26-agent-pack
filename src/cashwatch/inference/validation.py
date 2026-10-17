@@ -377,14 +377,27 @@ def parse_verification(text: str, *, candidate_id: str, frames: list[FrameRef],
                               _finish_limitations(lims, ctx))
 
 
-_CUE_LINE = re.compile(r"^\s*\**\s*Q\s*(\d+)\s*\**\s*[:.)-]\s*(yes|no|unclear|unknown)\b(.*)$", re.IGNORECASE)
+_CUE_LINE = re.compile(r"^\s*\**\s*Q\s*(\d+)\s*\**\s*[:.)-]\s*(.*)$", re.IGNORECASE)
 
 
-def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str]) -> list[PredicateAssessment]:
-    """Parse the compact cue answer format ("Q1: yes 3-9"). Missing/garbled answers become unknown;
-    out-of-range frame numbers are dropped (never mapped to other frames)."""
+def _frame_numbers(text: str, n: int) -> list[int]:
+    idx: list[int] = []
+    for tok in re.findall(r"\d+\s*[-–]\s*\d+|\d+", text):
+        if "-" in tok or "–" in tok:
+            lo, hi = (int(x) for x in re.split(r"\s*[-–]\s*", tok))
+            if lo <= hi and hi - lo <= n:
+                idx.extend(range(lo, hi + 1))
+        else:
+            idx.append(int(tok))
+    return sorted({i for i in idx if 1 <= i <= n})
+
+
+def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str],
+               yes_without_frames_is_window: bool = False) -> list[PredicateAssessment]:
+    """Parse compact answers: "Q1: yes 3-9", "Q2: no", "Q3: yes 5-9; no 1-4", "Q4: unclear".
+    Missing/garbled answers become unknown; out-of-range frame numbers are dropped."""
     n = len(frames)
-    answers: dict[int, tuple[str, list[int]]] = {}
+    answers: dict[int, tuple[list[int], list[int], bool, bool]] = {}
     for line in text.splitlines():
         m = _CUE_LINE.match(line)
         if not m:
@@ -392,32 +405,34 @@ def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str]) -
         q = int(m.group(1))
         if not 1 <= q <= len(predicate_ids) or q in answers:
             continue
-        word = m.group(2).lower()
-        idx: list[int] = []
-        for tok in re.findall(r"\d+\s*(?:-|–)\s*\d+|\d+", m.group(3)):
-            if "-" in tok or "–" in tok:
-                lo, hi = (int(x) for x in re.split(r"\s*[-–]\s*", tok))
-                if lo <= hi and hi - lo <= n:
-                    idx.extend(range(lo, hi + 1))
-            else:
-                idx.append(int(tok))
-        idx = sorted({i for i in idx if 1 <= i <= n})
-        answers[q] = (word, idx)
+        body = m.group(2).lower()
+        yes_part = no_part = ""
+        said_yes = said_no = False
+        for part in re.split(r"[;|]", body):
+            part = part.strip()
+            if part.startswith("yes"):
+                said_yes, yes_part = True, part[3:]
+            elif part.startswith("no"):
+                said_no, no_part = True, part[2:]
+        answers[q] = (_frame_numbers(yes_part, n), _frame_numbers(no_part, n), said_yes, said_no)
     out: list[PredicateAssessment] = []
     for q, pid in enumerate(predicate_ids, 1):
-        word, idx = answers.get(q, ("unclear", []))
-        ids = [frames[i - 1].frame_id for i in idx]
-        if word == "yes" and ids:
-            ts_ = [frames[i - 1].relative_sec for i in idx]
-            out.append(PredicateAssessment(predicate_id=pid, state="supported", supporting_frame_ids=ids,
-                                           interval_start_sec=min(ts_), interval_end_sec=max(ts_),
-                                           visibility="clear", reasoning_note="cue: yes"))
-        elif word == "no":
-            out.append(PredicateAssessment(predicate_id=pid, state="contradicted",
-                                           contradicting_frame_ids=[f.frame_id for f in frames],
-                                           visibility="clear", reasoning_note="cue: no"))
+        yes, no, said_yes, said_no = answers.get(q, ([], [], False, False))
+        if said_yes and not yes and yes_without_frames_is_window:
+            yes = list(range(1, n + 1))  # coarse proposal only; anchors come from verification
+        yes_ids = [frames[i - 1].frame_id for i in yes]
+        no_ids = [frames[i - 1].frame_id for i in no if i not in yes]
+        if said_no and not no_ids and not said_yes and not yes_without_frames_is_window:
+            no_ids = [f.frame_id for f in frames]  # verify: plain "no" = false across the window
+        if yes_ids:
+            ts_ = [frames[i - 1].relative_sec for i in yes]
+            out.append(PredicateAssessment(predicate_id=pid, state="supported", supporting_frame_ids=yes_ids,
+                                           contradicting_frame_ids=no_ids, interval_start_sec=min(ts_),
+                                           interval_end_sec=max(ts_), visibility="clear", reasoning_note="yes"))
+        elif no_ids or (said_no and not said_yes):
+            out.append(PredicateAssessment(predicate_id=pid, state="contradicted", contradicting_frame_ids=no_ids,
+                                           visibility="clear", reasoning_note="no"))
         else:
-            # "yes" without frames is not grounded -> unknown
             out.append(PredicateAssessment(predicate_id=pid, state="unknown", visibility="partial",
-                                           reasoning_note="cue: unclear" if word != "yes" else "cue: yes without frames"))
+                                           reasoning_note="yes without frames" if said_yes else "unclear"))
     return out
