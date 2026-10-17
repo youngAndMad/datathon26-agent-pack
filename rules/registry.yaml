@@ -515,3 +515,172 @@ rules:
     limitations_ru:
       - "Кратковременная проверка может быть не видна на записи."
     approval: {owner: null, date: null, validation_counts: null, notes: "not approved"}
+
+# ---------------------------------------------------------------------------------------------
+# Data-driven candidates (2026-10-17, D012): designed from the organizer OPEN training set
+# patterns; evaluated via scripts/dev_eval.py in candidate (evaluation-only) mode.
+# ---------------------------------------------------------------------------------------------
+  - rule_id: CW10
+    version: "0.2.0"
+    state: disabled
+    disabled_reason: "Кандидат: оценивается на открытом обучающем наборе (D012)."
+    symbol: LEAVES_DESK_UNSECURED
+    type_ru: "Кассир покидает рабочее место, оставив наличные/ценности без хранения"
+    source_id: L01
+    clause: "20 (часть вторая), 22"
+    excerpt_ids: [L01-p20, L01-p22]
+    source_status: {clause_text: verified, edition: verified, applicability: unverified, local_visual_validation: pending, notes: "п.20 ч.2 — ранее принятые деньги в запираемых устройствах; п.22 — не покидать рабочее место до окончания обслуживания."}
+    last_verified: "2026-10-17"
+    paraphrase_ru: "Ранее принятые наличные хранятся в запираемых устройствах на рабочем месте; кассир не покидает рабочее место до окончания обслуживания клиента."
+    applicability_en: ["The person who works behind the cash desk (counting machine side) leaves the desk area or the room."]
+    nonvisual_prerequisites_en: ["Role is inferred only from position at the cash desk."]
+    predicates:
+      - {predicate_id: CW10.leaving, kind: trigger, required_state: supported, question_en: "Does the cashier (the person working behind the cash desk with the counting machine) stand up and walk away from the desk toward the door or out of view?", counterexamples_en: ["Standing up or turning to the safe right next to the desk and coming back."]}
+      - {predicate_id: CW10.left_unsecured, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame has the cashier left the desk (chair empty, cashier walking away or gone) while banknotes, a cash bag, papers or other items still lie on the desk, OR a client is still sitting at the desk, OR the safe door is still open?", counterexamples_en: ["The desk is empty apart from fixed equipment (counting machine, laptop, phone, lamp) and the safe is closed.", "The cashier is still sitting at the desk."]}
+      - {predicate_id: CW10.desk_visible, kind: visibility, required_state: supported, question_en: "Are the desk surface and the cashier's chair visible?", counterexamples_en: []}
+      - {predicate_id: CW10.excl_secured, kind: exclusion, required_state: not_supported, question_en: "Before walking away, did the cashier put the cash/items into the safe or a drawer and close it, leaving only fixed equipment on the desk and no client present?", counterexamples_en: []}
+    counterexamples_en: ["Leaving after putting everything into the safe and closing it, with no client present.", "End-of-shift leaving with an empty desk."]
+    boundary_notes_en: ["The decisive moment is the first frame where the cashier is away from the desk while items or a client remain."]
+    visibility_requirements_en: ["Desk and chair visible."]
+    temporal: {kind: action, transition_from: null, context_before_sec: 4.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_anchor_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW10.v1
+      fact_ru: "кассир отходит от рабочего места, при этом на столе остаются наличные или иные предметы, либо у кассы остаётся клиент, либо сейф открыт"
+      interpretation_ru: "оставление рабочего места без размещения наличных в запираемых устройствах хранения или до окончания обслуживания клиента"
+      predicate_ru: "кассир покинул рабочее место, а стол не освобождён и (или) хранилище не закрыто"
+    limitations_ru: ["Мелкие предметы на столе могут быть неразличимы при данном разрешении.", "Запирание устройств хранения по видео не устанавливается."]
+    approval: {owner: null, date: null, validation_counts: null, notes: "candidate"}
+
+  - rule_id: CW11
+    version: "0.2.0"
+    state: disabled
+    disabled_reason: "Кандидат: оценивается на открытом обучающем наборе (D012)."
+    symbol: PRIOR_CASH_ON_DESK_NEXT_CLIENT
+    type_ru: "Наличные предыдущей операции на столе при обслуживании следующего клиента"
+    source_id: L01
+    clause: "20 (часть вторая)"
+    excerpt_ids: [L01-p20]
+    source_status: {clause_text: verified, edition: verified, applicability: unverified, local_visual_validation: pending, notes: "На рабочем месте находятся только наличные текущего клиента."}
+    last_verified: "2026-10-17"
+    paraphrase_ru: "На рабочем месте кассира находятся наличные только текущего клиента; ранее принятые хранятся в запираемых устройствах."
+    applicability_en: ["Two different clients are served one after another at the same cash desk."]
+    nonvisual_prerequisites_en: []
+    predicates:
+      - {predicate_id: CW11.client_change, kind: trigger, required_state: supported, question_en: "Does one client leave the cash desk and/or a new client arrive and sit down at the desk?", counterexamples_en: ["The same client stands up briefly and sits back down."]}
+      - {predicate_id: CW11.prior_cash_on_desk, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame is a new client at the desk while banknotes or cash bundles that were already on the desk before this client arrived are still lying on the desk (not put into the safe, drawer or cabinet)?", counterexamples_en: ["The cash on the desk was just handed over by the current client.", "Only papers or documents lie on the desk."]}
+      - {predicate_id: CW11.desk_visible, kind: visibility, required_state: supported, question_en: "Is the desk surface visible during the client change?", counterexamples_en: []}
+      - {predicate_id: CW11.excl_current_or_paper, kind: exclusion, required_state: not_supported, question_en: "Are the items on the desk only documents/paper, or cash belonging to the current client?", counterexamples_en: []}
+    counterexamples_en: ["Previous client's cash put into the safe before the next client arrives.", "Current client's own cash on the desk."]
+    boundary_notes_en: ["Anchor at the first frame where the next client is at the desk with the earlier cash still on it."]
+    visibility_requirements_en: ["Desk visible from the first client's departure to the next client's arrival."]
+    temporal: {kind: state, transition_from: null, context_before_sec: 6.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_anchor_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW11.v1
+      fact_ru: "при обслуживании следующего клиента на столе остаются наличные, находившиеся там до его прихода"
+      interpretation_ru: "нахождение на рабочем месте наличных, не относящихся к текущему клиенту"
+      predicate_ru: "ранее принятые наличные не убраны в запираемое устройство хранения до начала обслуживания следующего клиента"
+    limitations_ru: ["Принадлежность наличных конкретному клиенту оценивается только по видимой последовательности."]
+    approval: {owner: null, date: null, validation_counts: null, notes: "candidate"}
+
+  - rule_id: CW12
+    version: "0.2.0"
+    state: disabled
+    disabled_reason: "Кандидат: оценивается на открытом обучающем наборе (D012)."
+    symbol: STAFF_PERSONAL_ITEMS
+    type_ru: "Личные вещи кассира на рабочем месте в кассовом узле"
+    source_id: L01
+    clause: "12"
+    excerpt_ids: [L01-p12]
+    source_status: {clause_text: verified, edition: verified, applicability: unverified, local_visual_validation: pending, notes: "Личные вещи работников хранятся вне кассового узла; допускаются лекарства, медизделия и средства связи без фото/видеофиксации."}
+    last_verified: "2026-10-17"
+    paraphrase_ru: "Личные вещи работников хранятся вне кассового узла; допускаются лекарства, медицинские изделия и средства связи без функции фото- и видеофиксации."
+    applicability_en: ["Items of the cashier (not of the client) at the cash desk."]
+    nonvisual_prerequisites_en: ["Ownership is inferred only from who places/uses the item."]
+    predicates:
+      - {predicate_id: CW12.personal_item_action, kind: trigger, required_state: supported, question_en: "Does the cashier put a handbag, purse, coat or drink on the desk, drink or eat, or hold or use a mobile phone?", counterexamples_en: ["The client holds a phone or bag.", "The cashier uses the desk telephone, laptop, counting machine or a calculator."]}
+      - {predicate_id: CW12.personal_item_present, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame is a personal item of the cashier visible at the cash desk: a handbag, purse, coat, a cup/bottle/can she drinks from, food, or a smartphone in her hand?", counterexamples_en: ["Bank equipment: counting machine, laptop, desk phone, scanner, calculator, lamp.", "Items belonging to the client."]}
+      - {predicate_id: CW12.desk_visible, kind: visibility, required_state: supported, question_en: "Are the cashier and the desk clearly visible?", counterexamples_en: []}
+      - {predicate_id: CW12.excl_client_or_equipment, kind: exclusion, required_state: not_supported, question_en: "Is the item actually the client's, or bank equipment (counting machine, laptop, desk phone, calculator)?", counterexamples_en: []}
+    counterexamples_en: ["Client's phone or bag.", "Bank equipment on the desk."]
+    boundary_notes_en: ["Anchor at the first frame where the cashier's personal item is clearly visible at the desk."]
+    visibility_requirements_en: ["Cashier and desk visible."]
+    temporal: {kind: state, transition_from: null, context_before_sec: 3.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_anchor_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW12.v1
+      fact_ru: "на рабочем месте кассира видна личная вещь кассира (сумка, верхняя одежда, напиток или смартфон в руках)"
+      interpretation_ru: "нахождение личных вещей работника в кассовом узле"
+      predicate_ru: "личный предмет кассира находится на рабочем месте или используется им"
+    limitations_ru: ["Наличие у телефона функции фото/видеофиксации по видео не устанавливается."]
+    approval: {owner: null, date: null, validation_counts: null, notes: "candidate"}
+
+  - rule_id: CW13
+    version: "0.2.0"
+    state: disabled
+    disabled_reason: "Кандидат: оценивается на открытом обучающем наборе (D012)."
+    symbol: SAFE_LEFT_OPEN
+    type_ru: "Сейф оставлен открытым вне операции с ним"
+    source_id: L01
+    clause: "20 (часть вторая)"
+    excerpt_ids: [L01-p20]
+    source_status: {clause_text: verified, edition: verified, applicability: unverified, local_visual_validation: pending, notes: "Ранее принятые деньги хранятся в устройствах, закрывающихся на ключ."}
+    last_verified: "2026-10-17"
+    paraphrase_ru: "Ранее принятые наличные хранятся в специальных устройствах, закрывающихся на ключ."
+    applicability_en: ["A safe or metal cabinet at the cashier's workplace."]
+    nonvisual_prerequisites_en: []
+    predicates:
+      - {predicate_id: CW13.safe_open, kind: trigger, required_state: supported, question_en: "Is the door of the safe (the grey metal cabinet next to the desk) open?", counterexamples_en: ["The safe door is closed."]}
+      - {predicate_id: CW13.open_unattended, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame is the safe door open while the cashier is NOT putting anything into it or taking anything out of it (for example she is counting at the desk, talking, or walking away)?", counterexamples_en: ["The cashier's hand is inside the safe or she is placing/taking cash at this moment."]}
+      - {predicate_id: CW13.safe_visible, kind: visibility, required_state: supported, question_en: "Is the safe door clearly visible?", counterexamples_en: []}
+      - {predicate_id: CW13.excl_active_use, kind: exclusion, required_state: not_supported, question_en: "Is the cashier actively placing cash into or taking cash out of the safe at this moment?", counterexamples_en: []}
+    counterexamples_en: ["Brief opening to place or take cash, then closing."]
+    boundary_notes_en: ["Anchor at the first frame where the open safe is clearly not being used."]
+    visibility_requirements_en: ["Safe door visible."]
+    temporal: {kind: state, transition_from: null, context_before_sec: 3.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_anchor_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW13.v1
+      fact_ru: "дверь сейфа остаётся открытой, пока кассир не выполняет с ним операций"
+      interpretation_ru: "хранение наличных в незакрытом устройстве хранения"
+      predicate_ru: "сейф открыт без текущей операции по закладке или выемке наличных"
+    limitations_ru: ["Факт запирания на ключ по видео не устанавливается; оценивается только открытая дверь."]
+    approval: {owner: null, date: null, validation_counts: null, notes: "candidate"}
+
+  - rule_id: CW14
+    version: "0.2.0"
+    state: disabled
+    disabled_reason: "Кандидат: оценивается на открытом обучающем наборе (D012)."
+    symbol: COUNT_AFTER_CLIENT_LEFT
+    type_ru: "Пересчёт принимаемых наличных без присутствия клиента"
+    source_id: L01
+    clause: "20 (часть первая)"
+    excerpt_ids: [L01-p20]
+    source_status: {clause_text: verified, edition: verified, applicability: unverified, local_visual_validation: pending, notes: "Наличные принимаются и пересчитываются в присутствии клиента."}
+    last_verified: "2026-10-17"
+    paraphrase_ru: "Наличные деньги принимаются и пересчитываются кассовым работником в присутствии клиента."
+    applicability_en: ["Cash handed over by a client during this clip is being counted."]
+    nonvisual_prerequisites_en: []
+    predicates:
+      - {predicate_id: CW14.client_handover, kind: trigger, required_state: supported, question_en: "Does a client hand cash to the cashier, after which the cashier counts it by hand or with the counting machine?", counterexamples_en: ["The cashier counts cash alone with no client in this clip."]}
+      - {predicate_id: CW14.client_gone_while_counting, kind: decisive, anchor: true, required_state: supported, question_en: "In this frame is the cashier still counting that client's cash (by hand or in the counting machine) while the client has stood up and is leaving or is gone?", counterexamples_en: ["The client is still sitting at the desk.", "Counting finished before the client left."]}
+      - {predicate_id: CW14.area_visible, kind: visibility, required_state: supported, question_en: "Are both the cashier's hands/counting machine and the client's place visible?", counterexamples_en: []}
+      - {predicate_id: CW14.excl_internal, kind: exclusion, required_state: not_supported, question_en: "Is this internal counting by the cashier alone with no client handing over cash in this clip?", counterexamples_en: []}
+    counterexamples_en: ["Internal counting with no client.", "Client leaves after counting is complete."]
+    boundary_notes_en: ["Anchor at the first frame where the client leaves while counting continues."]
+    visibility_requirements_en: ["Counting area and client place visible."]
+    temporal: {kind: action, transition_from: null, context_before_sec: 6.0, context_after_sec: 3.0, requires_complete_interval: false, max_frame_gap_sec: null}
+    anchor_convention: first_anchor_supported
+    evidence_strategy: anchor_then_context
+    explanation:
+      template_id: CW14.v1
+      fact_ru: "клиент покидает кассу, пока кассир ещё пересчитывает переданные им наличные"
+      interpretation_ru: "пересчёт принимаемых наличных не в присутствии клиента"
+      predicate_ru: "пересчёт наличных клиента продолжается после ухода клиента"
+    limitations_ru: ["Завершённость пересчёта оценивается только по видимым действиям."]
+    approval: {owner: null, date: null, validation_counts: null, notes: "candidate"}
