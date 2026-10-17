@@ -1,0 +1,11 @@
+# Requests from agent B (media & evidence)
+
+No change to frozen G0 files is required. Integration notes and optional changes for the orchestrator:
+
+| # | Affected | Request | Reason |
+|---|---|---|---|
+| B-R1 | `src/cashwatch/pipeline/analyze.py` (O) | Informational / optional: `motion_profile()` is called before `sample_video()`, so the clip is decoded twice (motion pass about 2.3 s, then sampling pass about 2.5 s on the 145 s 1080p fixture). If the plan builder can do without motion proposals, call `sample_video()` first: it computes the 4 fps motion profile in the same pass and caches it, keyed by (source_sha256, fps), so the later `motion_profile()` call returns immediately. Otherwise no action is needed, since the extra pass costs about 2.3 s of the 270 s budget. | Latency |
+| B-R2 | pipeline wiring (O) | Optional: `create_media(max_pixel_area=settings.max_pixel_area)`. The default (3840*2160) already matches Settings. Other overrides available: `max_frames` (default 36 000), `max_duration_sec` (default 3600, decode-bomb guard only; competition limits stay in `check_limits`), `ffprobe_bin`, `ffmpeg_bin`, `isolate`. | Single source of limits |
+| B-R3 | `src/cashwatch/pipeline/worker.py::_maybe_preview` (O) | Informational: `make_preview()` already writes to a private temp file and atomically renames it to `out_path`, then returns `None` if it cannot verify alignment (first frame t=0, same frame count, same last-frame time). Passing the final path directly is safe. The current `.part.mp4` and rename approach also works. | Simplification |
+| B-R4 | F deployment (`deploy/`) | The offline bundle must ship `ffprobe` (always required) and `ffmpeg` with `libx264` (preview only; if it is missing, the preview returns `None`). Binaries are looked up on `PATH`, then `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, or come from explicit `create_media(ffprobe_bin=..., ffmpeg_bin=...)`. | Offline operation |
+| B-R5 | consumers of `FrameRef.local_path` (C, O) | Informational: thumbnails are stored as `frames/<frame_id>_L<long_side>.jpg`, not `frames/<frame_id>.jpg`. A refinement at a different long side then cannot overwrite (and invalidate the sha256 of) an earlier thumbnail of the same frame. Always resolve with `MediaPort.resolve_frame()`. | Provenance integrity |

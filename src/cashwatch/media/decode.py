@@ -389,6 +389,8 @@ def sequential_pass(path: str, meta: VideoMetadata, thumb_thr: list[int], motion
                     on_thumb: Callable[[av.VideoFrame, int], None] | None,
                     on_motion: Callable[[av.VideoFrame], None] | None,
                     deadline: Deadline, stage: str) -> dict:
+    """One decode pass in presentation order over every frame (no frame skipping, so the
+    motion profile is identical whether computed standalone or inside sample_video)."""
     thumb_thr = sorted(set(thumb_thr))
     motion_thr = sorted(set(motion_thr))
     i = j = 0
