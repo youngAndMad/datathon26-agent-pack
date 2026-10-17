@@ -2,8 +2,8 @@
 
 The worker process owns a ``ChildGenerator``; the model lives in a separate OS process started
 with an argument list (no shell), a scrubbed environment (offline flags forced, provider/API
-credentials removed) and its own session. Every call has a hard timeout; on timeout, crash or
-OOM the child is SIGKILLed and must be respawned + warmed before it is used again.
+credentials removed) and a private process boundary. Every call has a hard timeout; on
+timeout, crash or OOM the child is forcibly killed and must be respawned + warmed before use.
 """
 
 from __future__ import annotations
@@ -22,12 +22,10 @@ from cashwatch.inference.protocol import (
     OFFLINE_ENV,
     GenRequest,
     GenResult,
-    ProtocolEOF,
-    ProtocolTimeout,
     read_frame,
     write_frame,
 )
-from cashwatch.settings import REPO_ROOT
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class GenError(Exception):
@@ -86,6 +84,7 @@ class ChildGenerator:
         self.stderr_path = stderr_path
         self.python = python or sys.executable
         self._proc: subprocess.Popen | None = None
+        self._windows_start_ticks: int | None = None
         self._seq = 0
         self._lock = threading.Lock()
         self._loaded = False
@@ -114,8 +113,13 @@ class ChildGenerator:
         try:
             self._proc = subprocess.Popen(
                 cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err,
-                env=child_env(), cwd=str(REPO_ROOT), start_new_session=True, close_fds=True,
+                env=child_env(), cwd=str(REPO_ROOT), start_new_session=os.name != "nt",
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                close_fds=True,
             )
+            if os.name == "nt":
+                from cashwatch.inference.windows_process import start_ticks
+                self._windows_start_ticks = start_ticks(self._proc.pid)
         finally:
             if err is not subprocess.DEVNULL:
                 err.close()
@@ -149,8 +153,20 @@ class ChildGenerator:
             return
         if p.poll() is None:
             try:
-                os.killpg(p.pid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
+                if os.name == "nt":
+                    # A Windows venv Python launcher owns a second interpreter.
+                    # Killing only the launcher can leave model inference running.
+                    from cashwatch.inference.windows_process import stop_tree
+                    if self._windows_start_ticks is None:
+                        raise GenCrashed("Windows model process identity unavailable")
+                    try:
+                        stop_tree(p.pid, self._windows_start_ticks)
+                    except Exception as exc:
+                        # Keep the reference: never spawn a replacement after unverified cleanup.
+                        raise GenCrashed("Windows model tree cleanup failed: " + type(exc).__name__) from None
+                else:
+                    os.killpg(p.pid, signal.SIGKILL)
+            except (OSError, subprocess.TimeoutExpired):
                 try:
                     p.kill()
                 except ProcessLookupError:
@@ -166,6 +182,7 @@ class ChildGenerator:
             except OSError:
                 pass
         self._proc = None
+        self._windows_start_ticks = None
 
     def close(self, timeout_sec: float = 5.0) -> None:
         with self._lock:
@@ -186,21 +203,33 @@ class ChildGenerator:
         self._seq += 1
         seq = self._seq
         msg = dict(msg, seq=seq)
-        try:
-            write_frame(p.stdin, msg)  # type: ignore[arg-type]
-        except (BrokenPipeError, OSError) as e:
+        completed = threading.Event()
+        outcome: dict[str, Any] = {}
+
+        def exchange() -> None:
+            try:
+                write_frame(p.stdin, msg)  # type: ignore[arg-type]
+                outcome["reply"] = read_frame(p.stdout.fileno())  # type: ignore[union-attr]
+            except Exception as exc:
+                outcome["error"] = exc
+            finally:
+                completed.set()
+
+        # Include serialization and a blocked pipe write in the call budget. Killing the
+        # child releases pending reads/writes; no worker can consume a later child's pipe.
+        transport = threading.Thread(target=exchange, name="model-pipe", daemon=True)
+        transport.start()
+        if not completed.wait(max(0.0, timeout_sec)):
             self.kill()
-            raise GenCrashed(f"model child pipe closed: {type(e).__name__}") from None
-        try:
-            reply = read_frame(p.stdout.fileno(), timeout_sec)  # type: ignore[union-attr]
-        except ProtocolTimeout:
-            self.kill()
+            transport.join(timeout=1)
             raise GenTimeout(f"no reply within {timeout_sec:.1f}s; child killed") from None
-        except ProtocolEOF:
+        if "error" in outcome:
             code = p.poll()
             self.kill()
-            raise GenCrashed(f"model child exited (exit={code})") from None
-        if reply.get("seq") != seq:
+            raise GenCrashed(f"model child transport failed (exit={code}; "
+                             f"{type(outcome['error']).__name__})") from None
+        reply = outcome["reply"]
+        if not isinstance(reply, dict) or reply.get("seq") != seq:
             self.kill()
             raise GenCrashed("protocol sequence mismatch")
         if not reply.get("ok"):

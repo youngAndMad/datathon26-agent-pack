@@ -34,6 +34,13 @@ from cashwatch.settings import REPO_ROOT, Settings, get_settings
 
 log = logging.getLogger("cashwatch.worker")
 WATCHDOG_GRACE_SEC = 8.0
+
+
+def warmup_timeout(settings: Settings) -> float:
+    # Only affects explicit Windows local test startup, never the job deadline.
+    if os.name == "nt" and settings.mode == "test" and os.environ.get("CASHWATCH_WINDOWS_CPU_LOW_MEMORY") == "1":
+        return 600.0
+    return 180.0
 # R11: no audio processing. mlx-vlm installs audio packages transitively; they must never load.
 FORBIDDEN_MODULES = ("mlx_audio", "sounddevice", "miniaudio", "librosa", "soundfile", "torchaudio", "whisper")
 
@@ -211,7 +218,7 @@ def core_main(settings: Settings) -> int:
             time.sleep(5)
         return 2
     try:
-        ctx.perception.warmup(timeout_sec=180)
+        ctx.perception.warmup(timeout_sec=warmup_timeout(settings))
     except Exception as e:
         state["info"] = {"state": "warmup_failed", "error": type(e).__name__}
         log.error("warmup failed: %s", type(e).__name__)
@@ -235,7 +242,7 @@ def core_main(settings: Settings) -> int:
         if not ctx.perception.ready():
             ready.clear()
             try:
-                ctx.perception.warmup(timeout_sec=180)
+                ctx.perception.warmup(timeout_sec=warmup_timeout(settings))
                 ready.set()
             except Exception:
                 return 2

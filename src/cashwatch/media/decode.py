@@ -20,7 +20,6 @@ from __future__ import annotations
 import bisect
 import io
 import math
-import resource
 import sys
 import time
 from collections.abc import Callable, Iterator
@@ -47,6 +46,7 @@ from cashwatch.dto import (
 )
 from cashwatch.errors import PipelineError
 from cashwatch.media.paths import safe_write, sha256_bytes
+from cashwatch.media.platform_support import peak_rss_mb
 
 THUMB_QUALITY = 90
 MOTION_LONG_SIDE = 160
@@ -80,11 +80,6 @@ def evidence_id_for(frame_id: str) -> str:
 
 def _rel(pts: int, origin: int, tb: Fraction) -> Fraction:
     return (pts - origin) * tb
-
-
-def peak_rss_mb() -> float:
-    r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    return round(r / (1024 * 1024) if sys.platform == "darwin" else r / 1024, 1)
 
 
 def _tb(meta: VideoMetadata) -> Fraction:

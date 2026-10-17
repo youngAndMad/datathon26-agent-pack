@@ -1,0 +1,2 @@
+# Source snapshots are hash-verified; checkout must preserve their exact bytes.
+rules/sources/** -text

@@ -10,9 +10,14 @@ secrets/
 .env
 # build/runtime
 .venv/
+.venv-windows/
 __pycache__/
 *.pyc
 .pytest_cache/
+.pip-cache/
+.npm-cache/
+.tools/
+deploy/cashwatch.env
 frontend/node_modules/
 frontend/dist/
 dist/

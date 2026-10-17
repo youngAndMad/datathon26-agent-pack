@@ -10,6 +10,7 @@ resolved from request FrameRefs only.
 from __future__ import annotations
 
 import hashlib
+import logging
 import threading
 import time
 from dataclasses import dataclass, field
@@ -310,6 +311,11 @@ class LocalPerception:
         try:
             res = self.gen.generate(req, timeout)
         except GenError as e:
+            # Operational metadata only: never log prompts, frames or model text.
+            logging.getLogger("cashwatch.inference").warning(
+                "generation_failure kind=%s stage=%s call_limit_sec=%.1f",
+                e.kind, kind, timeout,
+            )
             raise self._map(e, deadline_bound=remaining < cap, where=kind) from None
         self.stats.calls.append(CallStats(kind, res.prompt_tokens, res.output_tokens, list(res.visual_tokens),
                                           res.visual_tokens_actual_total, list(res.image_sizes),
