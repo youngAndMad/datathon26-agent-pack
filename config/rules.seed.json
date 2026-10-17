@@ -1,0 +1,107 @@
+{
+  "registry_version": "research-seed-1",
+  "production_enabled": false,
+  "source_id": "L01",
+  "official_url": "https://adilet.zan.kz/rus/docs/V1900019680",
+  "rules": [
+    {
+      "rule_id": "CW01",
+      "symbol": "ACTIVE_RECEIPT_DEPARTURE",
+      "display_name_ru": "Выход кассира до завершения приёма наличных",
+      "clause": "22",
+      "state": "disabled",
+      "source_snapshot_sha256": null,
+      "operative_edition_verified": false,
+      "visual_predicates_validated": false,
+      "enablement_requirements": "RULES_CATALOG.md activation gates; never enable from this seed alone"
+    },
+    {
+      "rule_id": "CW02",
+      "symbol": "PRIOR_BATCH_NOT_STORED",
+      "display_name_ru": "Наличные предыдущего клиента вне места хранения",
+      "clause": "20, paragraph 2",
+      "state": "disabled",
+      "source_snapshot_sha256": null,
+      "operative_edition_verified": false,
+      "visual_predicates_validated": false,
+      "enablement_requirements": "RULES_CATALOG.md activation gates; never enable from this seed alone"
+    },
+    {
+      "rule_id": "CW03",
+      "symbol": "RECEIPT_CLIENT_ABSENT",
+      "display_name_ru": "Приём или пересчёт без присутствия клиента",
+      "clause": "20, paragraph 1",
+      "state": "disabled",
+      "source_snapshot_sha256": null,
+      "operative_edition_verified": false,
+      "visual_predicates_validated": false,
+      "enablement_requirements": "RULES_CATALOG.md activation gates; never enable from this seed alone"
+    },
+    {
+      "rule_id": "CW04",
+      "symbol": "PERSONAL_ITEM_IN_CASH_UNIT",
+      "display_name_ru": "Личные вещи сотрудника в кассовом узле",
+      "clause": "12",
+      "state": "disabled",
+      "source_snapshot_sha256": null,
+      "operative_edition_verified": false,
+      "visual_predicates_validated": false,
+      "enablement_requirements": "RULES_CATALOG.md activation gates; never enable from this seed alone"
+    },
+    {
+      "rule_id": "CW05",
+      "symbol": "REQUIRED_COUNT_OMITTED",
+      "display_name_ru": "Признаки пропуска обязательного пересчёта",
+      "clause": "19(2), 31(4); exceptions in 32",
+      "state": "disabled",
+      "source_snapshot_sha256": null,
+      "operative_edition_verified": false,
+      "visual_predicates_validated": false,
+      "enablement_requirements": "RULES_CATALOG.md activation gates; never enable from this seed alone"
+    },
+    {
+      "rule_id": "CW06",
+      "symbol": "INCOMING_BAG_CHECK_OMITTED",
+      "display_name_ru": "Признаки пропуска проверки принимаемой сумки",
+      "clause": "24(3), 24(4)",
+      "state": "disabled",
+      "source_snapshot_sha256": null,
+      "operative_edition_verified": false,
+      "visual_predicates_validated": false,
+      "enablement_requirements": "RULES_CATALOG.md activation gates; never enable from this seed alone"
+    },
+    {
+      "rule_id": "CW07",
+      "symbol": "DAMAGED_BAG_NO_COLLECTOR",
+      "display_name_ru": "Вскрытие повреждённой сумки без представителя инкассации",
+      "clause": "25",
+      "state": "disabled",
+      "source_snapshot_sha256": null,
+      "operative_edition_verified": false,
+      "visual_predicates_validated": false,
+      "enablement_requirements": "RULES_CATALOG.md activation gates; never enable from this seed alone"
+    },
+    {
+      "rule_id": "CW08",
+      "symbol": "BACKOFFICE_NO_CONTROLLER",
+      "display_name_ru": "Пересчёт вне клиентской операции без контроля",
+      "clause": "42",
+      "state": "disabled",
+      "source_snapshot_sha256": null,
+      "operative_edition_verified": false,
+      "visual_predicates_validated": false,
+      "enablement_requirements": "RULES_CATALOG.md activation gates; never enable from this seed alone"
+    },
+    {
+      "rule_id": "CW09",
+      "symbol": "COLLECTOR_BAG_CHECK",
+      "display_name_ru": "Признаки пропуска проверки сумки инкассатором",
+      "clause": "107(1), 107(2)",
+      "state": "disabled",
+      "source_snapshot_sha256": null,
+      "operative_edition_verified": false,
+      "visual_predicates_validated": false,
+      "enablement_requirements": "RULES_CATALOG.md activation gates; never enable from this seed alone"
+    }
+  ]
+}

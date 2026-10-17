@@ -1,0 +1,142 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Datathon 26 jury API",
+    "version": "1.0.0",
+    "description": "Mandatory jury endpoints only. Supporting UI/report/media endpoints are defined separately. JSON Schemas are local relative files in this directory; bundle them for generated docs."
+  },
+  "security": [
+    {
+      "JuryApiKey": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "JuryApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/analyze": {
+      "post": {
+        "operationId": "analyzeVideo",
+        "summary": "Upload a MOV video",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "MOV video bytes; MIME and extension are not authoritative"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Persisted upload and accepted job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "submit-response.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid upload"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "409": {
+            "description": "Idempotency key reused with a different file"
+          },
+          "413": {
+            "description": "Size limit exceeded"
+          },
+          "415": {
+            "description": "Unsupported actual container"
+          },
+          "422": {
+            "description": "Invalid media or multipart form"
+          },
+          "429": {
+            "description": "Capacity unavailable",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Worker/model not ready"
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "get": {
+        "operationId": "getAnalysisJob",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Processing, done or failed job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "job-response.schema.json"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "404": {
+            "description": "Unknown or inaccessible job"
+          },
+          "410": {
+            "description": "Expired job"
+          }
+        }
+      }
+    }
+  }
+}
