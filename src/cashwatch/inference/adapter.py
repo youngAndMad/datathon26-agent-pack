@@ -62,7 +62,7 @@ class AdapterConfig:
     keep_raw_text: bool = False
     # "id": frames labelled with their real frame ids; "index": per-call integers 1..N mapped
     # back by the application (fewer output tokens). Both are validated identically.
-    frame_label_mode: str = "id"
+    frame_label_mode: str = "index"
 
 
 @dataclass

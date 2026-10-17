@@ -12,13 +12,13 @@
   `coordination/handoffs/C.md` (16 frames @640 px per window costs ~9-10 s prefill alone; 16 windows
   cannot fit 130 s; 24-frame verification @640 px cannot fit 70 s / 8 candidates).
 * Proposed: `max_frames_per_observation` and `model_long_side_px` / window length per the handoff
-  recommendation; `max_refinement_frames` 12 and `verify_max_new_tokens` <= 384; and either fewer
+  recommendation; `max_refinement_frames` <= 16 at 384 px and `verify_max_new_tokens` 384; and either fewer
   windows (longer windows at lower fps) or a lower `max_candidates_refined`.
 * Consumers: pipeline sampling plan, media thumbnails (B), budget guards (O).
 
 ## C-R3 Optional settings for the adapter (no change required to run)
 * Add to `Settings` (env CASHWATCH_...): `perception_label_mode: Literal["id","index"]="index"`,
-  `perception_call_cap_sec: float=45`, `perception_max_pixels: int|None=None`.
+  `perception_call_cap_sec: float=60`, `perception_max_pixels: int|None=None`.
 * Today these are `AdapterConfig` defaults inside `src/cashwatch/inference/adapter.py`; the pipeline
   can pass `config=adapter_config_from_profile(settings.profile, ...)` to `create_perception`.
 * Consumers: worker wiring only.

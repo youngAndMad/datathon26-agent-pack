@@ -19,7 +19,8 @@ from inference_canned import good_observation
 
 def _adapter(tmp_path, **options):
     gen = ChildGenerator("scripted", tmp_path, options=options)
-    cfg = AdapterConfig(observe_call_cap_sec=1.5, verify_call_cap_sec=1.5, repair_call_cap_sec=1.5)
+    cfg = AdapterConfig(observe_call_cap_sec=1.5, verify_call_cap_sec=1.5, repair_call_cap_sec=1.5,
+                        frame_label_mode="id")
     return LocalPerception(gen, adapter="mlx", model_id="scripted", revision="test",
                            local_path_label="scripted", is_mock=True, config=cfg), gen
 
