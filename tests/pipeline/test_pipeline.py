@@ -226,3 +226,11 @@ def test_model_limitation_text_not_in_reviewer_notice(tmp_path):
     report, _ = _run(tmp_path, _ctx(Chatty()))
     assert "MODEL-FREE-TEXT" not in (report.coverage_notice_ru or "")
     assert "MODEL-FREE-TEXT limitation" in report.coverage.visual_limitations  # kept privately
+
+
+def test_test_registry_clean_result_is_labeled_meaningless(tmp_path):
+    ctx = _ctx(fakes.FakePerception())
+    ctx.registry.test_only = True
+    report, _ = _run(tmp_path, ctx)
+    assert report.jury_result.verdict == "no_violation"
+    assert "ТЕСТОВЫЙ РЕЕСТР" in report.coverage_notice_ru

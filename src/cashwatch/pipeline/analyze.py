@@ -171,6 +171,11 @@ def analyze_job(
 ) -> AnalysisReport:
     run = _Run()
     run.stages.append("receiving")  # upload persisted and job accepted before the worker claims it
+    if getattr(ctx.registry, "test_only", False):
+        # A clean result here only means "the synthetic test rule did not fire". Say so loudly.
+        run.limitations_ru.append(
+            "ТЕСТОВЫЙ РЕЕСТР: проверялось только синтетическое тестовое правило; реальные правила "
+            "кассовой дисциплины не подключены, поэтому отсутствие нарушений здесь ничего не означает")
     t_start = time.monotonic()
     sampling = ctx.profile["sampling"]
     budget = ctx.profile.get("budget_sec", {})
