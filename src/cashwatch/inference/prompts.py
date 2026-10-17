@@ -52,7 +52,7 @@ limitations: an array of short factual visibility/temporal limitations.
 
 Every frame ID must be from the supplied list. Keep action statements short and observable. Visibility is clear, partial or unusable. State is supported, contradicted or unknown; use unknown when the frames do not establish the answer. Use uncertainty to identify which part is not established. Empty observations is valid. Do not manufacture an event because this is a cashier video.
 
-Be brief: one observation per distinct visible state or change, spanning consecutive frames (usually 1 to 6 observations, at most {MAX_OBSERVATIONS}). In frame_ids list only key frames (first, decisive and last; at most 4). In supporting_frame_ids and contradicting_frame_ids include the first frame where the fact is visible and at most 6 frames in total. actor_refs are short anonymous labels such as A1 (at most {MAX_ACTORS}); at most {MAX_OBJECTS} short object_hypotheses; action, uncertainty and visible_reason are short phrases (at most {MAX_ACTION_CHARS} characters); at most {MAX_LIMITATIONS} limitations. Omit keys whose value would be empty. Do not output timestamps; refer to frames only by frame ID. Write minified JSON on a single line without indentation.
+Be brief: one observation per distinct visible state or change, spanning consecutive frames (usually 1 to 6 observations, at most {MAX_OBSERVATIONS}). In frame_ids list only key frames (first, decisive and last; at most 4). In supporting_frame_ids and contradicting_frame_ids include the first frame where the fact is visible and at most 6 frames in total. actor_refs are short anonymous labels such as A1 (at most {MAX_ACTORS}); at most {MAX_OBJECTS} short object_hypotheses; action, uncertainty and visible_reason are short phrases of at most 15 words; at most 3 short limitations. Omit keys whose value would be empty. Do not output timestamps; refer to frames only by frame ID. Write minified JSON on a single line without indentation.
 
 JSON shape:
 {{"window_id": "...", "observations": [{{"observation_id": "o1", "frame_ids": ["..."], "actor_refs": ["A1"], "object_hypotheses": ["..."], "action": "...", "visibility": "clear", "uncertainty": "..."}}], "cue_assessments": [{{"predicate_id": "...", "state": "unknown", "supporting_frame_ids": [], "contradicting_frame_ids": [], "visibility": "partial", "visible_reason": "..."}}], "limitations": ["..."]}}"""
@@ -83,7 +83,7 @@ limitations: [short strings].
 
 Use false for interval_complete when the available view or temporal sampling cannot establish completeness. This is a report about available evidence, not a claim that the real-world action did not happen.
 
-Every frame ID must be from the supplied list and every predicate_id from the supplied definitions. Visibility is clear, partial or unusable. In supporting_frame_ids and contradicting_frame_ids include the first frame where the fact is visible and at most 6 frames in total. visible_reason is a short phrase (at most {MAX_REASON_CHARS} characters); at most {MAX_ALTERNATIVES} plausible_alternatives and {MAX_LIMITATIONS} limitations. Omit keys whose value would be empty. Do not output timestamps; refer to frames only by frame ID. Write minified JSON on a single line without indentation or Markdown.
+Every frame ID must be from the supplied list and every predicate_id from the supplied definitions. Visibility is clear, partial or unusable. In supporting_frame_ids and contradicting_frame_ids include the first frame where the fact is visible and at most 6 frames in total. visible_reason is a short phrase of at most 15 words; at most 3 short plausible_alternatives and 3 short limitations. Omit keys whose value would be empty. Do not output timestamps; refer to frames only by frame ID. Write minified JSON on a single line without indentation or Markdown.
 
 JSON shape:
 {{"candidate_id": "...", "assessments": [{{"predicate_id": "...", "state": "unknown", "supporting_frame_ids": [], "contradicting_frame_ids": [], "visibility": "partial", "visible_reason": "..."}}], "plausible_alternatives": ["..."], "interval_complete": false, "visibility_sufficient": false, "limitations": ["..."]}}"""
@@ -113,9 +113,15 @@ Required shape:
 {shape}
 Previous answer (may be truncated):
 {previous}
+{budget}
 Return the corrected JSON object only."""
 
 FRAME_LABEL = "Frame {frame_id} at {t}s:"
+# "index" label mode: frames are labelled 1..N for this call only; the application maps the
+# integers back to the request frame ids (shorter output, fewer copy errors on long ids).
+FRAME_LABEL_INDEX = "Frame {frame_id} at {t}s:"
+INDEX_NOTE = ("Frame IDs in this request are the integers 1 to {n} shown in the frame labels. Write a single frame as a "
+              "JSON integer and a run of consecutive frames as one range string such as \"3-9\".")
 
 
 def _sha(system: str, template: str) -> str:
@@ -124,11 +130,15 @@ def _sha(system: str, template: str) -> str:
 
 OBSERVE_PROMPT_SHA256 = _sha(OBSERVE_SYSTEM, OBSERVE_USER_TEMPLATE + "\n" + FRAME_LABEL)
 VERIFY_PROMPT_SHA256 = _sha(VERIFY_SYSTEM, VERIFY_USER_TEMPLATE + "\n" + FRAME_LABEL)
+OBSERVE_PROMPT_SHA256_INDEX = _sha(OBSERVE_SYSTEM, OBSERVE_USER_TEMPLATE + "\n" + FRAME_LABEL_INDEX + "\n" + INDEX_NOTE)
+VERIFY_PROMPT_SHA256_INDEX = _sha(VERIFY_SYSTEM, VERIFY_USER_TEMPLATE + "\n" + FRAME_LABEL_INDEX + "\n" + INDEX_NOTE)
 REPAIR_PROMPT_SHA256 = _sha(REPAIR_SYSTEM, REPAIR_USER_TEMPLATE)
 
 PROMPT_REGISTRY: dict[str, str] = {
     OBSERVE_PROMPT_VERSION: OBSERVE_PROMPT_SHA256,
     VERIFY_PROMPT_VERSION: VERIFY_PROMPT_SHA256,
+    OBSERVE_PROMPT_VERSION + "+index": OBSERVE_PROMPT_SHA256_INDEX,
+    VERIFY_PROMPT_VERSION + "+index": VERIFY_PROMPT_SHA256_INDEX,
     REPAIR_PROMPT_VERSION: REPAIR_PROMPT_SHA256,
 }
 
@@ -154,19 +164,33 @@ def _gaps(frames: list[FrameRef]) -> str:
             "actions shorter than a gap may be missed")
 
 
-def _frame_segments(frames: list[FrameRef]) -> list[Segment]:
+def frame_labels(frames: list[FrameRef], mode: str) -> dict[str, str]:
+    """label -> frame_id for one call."""
+    if mode == "index":
+        return {str(i + 1): f.frame_id for i, f in enumerate(frames)}
+    if mode == "id":
+        return {f.frame_id: f.frame_id for f in frames}
+    raise ValueError(f"unknown frame label mode {mode!r}")
+
+
+def _frame_segments(frames: list[FrameRef], mode: str) -> list[Segment]:
     segs: list[Segment] = []
     for i, f in enumerate(frames):
-        segs.append(("text", "\n" + FRAME_LABEL.format(frame_id=f.frame_id, t=_fmt_t(f.relative_sec)) + "\n"))
+        label = str(i + 1) if mode == "index" else f.frame_id
+        tmpl = FRAME_LABEL_INDEX if mode == "index" else FRAME_LABEL
+        segs.append(("text", "\n" + tmpl.format(frame_id=label, t=_fmt_t(f.relative_sec)) + "\n"))
         segs.append(("image", i))
     segs.append(("text", "\n"))
     return segs
 
 
-def _split_template(template: str, values: dict[str, str], frames: list[FrameRef]) -> list[Segment]:
+def _split_template(template: str, values: dict[str, str], frames: list[FrameRef], mode: str = "id") -> list[Segment]:
     head, tail = template.split("{frames}")
-    out: list[Segment] = [("text", head.format(**values))]
-    out.extend(_frame_segments(frames))
+    head = head.format(**values)
+    if mode == "index":
+        head = INDEX_NOTE.format(n=len(frames)) + "\n" + head
+    out: list[Segment] = [("text", head)]
+    out.extend(_frame_segments(frames, mode))
     out.append(("text", tail.format(**values)))
     return out
 
@@ -175,7 +199,7 @@ def _bullet(lines: list[str]) -> str:
     return "\n".join(f"- {s}" for s in lines) if lines else "- none supplied"
 
 
-def build_observe_prompt(req: ObservationRequest) -> BuiltPrompt:
+def build_observe_prompt(req: ObservationRequest, label_mode: str = "id") -> BuiltPrompt:
     if req.cue_predicates:
         cue_lines = []
         for p in req.cue_predicates:
@@ -194,11 +218,11 @@ def build_observe_prompt(req: ObservationRequest) -> BuiltPrompt:
         "gaps": _gaps(req.frames),
         "cues": cues,
     }
-    return BuiltPrompt(OBSERVE_SYSTEM, _split_template(OBSERVE_USER_TEMPLATE, values, req.frames),
-                       OBSERVE_PROMPT_SHA256)
+    return BuiltPrompt(OBSERVE_SYSTEM, _split_template(OBSERVE_USER_TEMPLATE, values, req.frames, label_mode),
+                       OBSERVE_PROMPT_SHA256_INDEX if label_mode == "index" else OBSERVE_PROMPT_SHA256)
 
 
-def build_verify_prompt(req: VerificationRequest) -> BuiltPrompt:
+def build_verify_prompt(req: VerificationRequest, label_mode: str = "id") -> BuiltPrompt:
     preds = [f"{p.predicate_id}: {p.question_en}" for p in req.predicates]
     counter = [f"{p.predicate_id}: {c}" for p in req.predicates for c in p.counterexamples_en]
     values = {
@@ -211,12 +235,13 @@ def build_verify_prompt(req: VerificationRequest) -> BuiltPrompt:
         "boundaries": _bullet(list(req.boundary_notes_en)),
         "gaps": _gaps(req.frames),
     }
-    return BuiltPrompt(VERIFY_SYSTEM, _split_template(VERIFY_USER_TEMPLATE, values, req.frames),
-                       VERIFY_PROMPT_SHA256)
+    return BuiltPrompt(VERIFY_SYSTEM, _split_template(VERIFY_USER_TEMPLATE, values, req.frames, label_mode),
+                       VERIFY_PROMPT_SHA256_INDEX if label_mode == "index" else VERIFY_PROMPT_SHA256)
 
 
 def build_repair_prompt(*, kind: str, error: str, previous: str, frame_ids: list[str],
-                        predicate_ids: list[str], max_previous_chars: int = 6000) -> BuiltPrompt:
+                        predicate_ids: list[str], max_previous_chars: int = 6000,
+                        truncated: bool = False, index_mode: bool = False) -> BuiltPrompt:
     shape_src = OBSERVE_SYSTEM if kind == "observe" else VERIFY_SYSTEM
     shape = shape_src.split("JSON shape:\n", 1)[1]
     text = REPAIR_USER_TEMPLATE.format(
@@ -225,5 +250,9 @@ def build_repair_prompt(*, kind: str, error: str, previous: str, frame_ids: list
         predicate_ids=", ".join(predicate_ids) or "none",
         shape=shape,
         previous=previous[:max_previous_chars],
+        budget=("The previous answer was cut off at the length limit. Rewrite it much shorter: "
+                + ("write consecutive frames as range strings such as \"3-9\", " if index_mode else "")
+                + "keep each phrase under 10 words, keep at most 4 observations, use at most 2 limitations "
+                "and drop plausible_alternatives if needed.") if truncated else "",
     )
     return BuiltPrompt(REPAIR_SYSTEM, [("text", text)], REPAIR_PROMPT_SHA256)

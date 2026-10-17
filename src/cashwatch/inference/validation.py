@@ -277,9 +277,44 @@ def _frame_map(frames: list[FrameRef]) -> dict[str, FrameRef]:
     return {f.frame_id: f for f in frames}
 
 
+_RANGE = re.compile(r"^(\d{1,4})\s*[-–]\s*(\d{1,4})$")
+_FRAME_KEYS = ("frame_ids", "supporting_frame_ids", "contradicting_frame_ids")
+
+
+def _map_labels(obj: dict[str, Any], labels: dict[str, str] | None) -> dict[str, Any]:
+    """Index label mode: integers / digit strings -> request frame ids. Unknown labels are kept
+    as an unmistakable placeholder so validation rejects them."""
+    if not labels:
+        return obj
+
+    def conv(v: Any) -> list[Any]:
+        if isinstance(v, bool):
+            return [v]
+        if isinstance(v, int | str):
+            key = str(v).strip()
+            m = _RANGE.match(key)
+            if m:
+                a, b = int(m.group(1)), int(m.group(2))
+                if a <= b and str(a) in labels and str(b) in labels:
+                    return [labels[str(i)] for i in range(a, b + 1)]
+                return [f"#unknown-range-{key[:20]}"]
+            return [labels.get(key, f"#unknown-label-{key[:20]}")]
+        return [v]
+
+    for list_key in ("observations", "cue_assessments", "assessments"):
+        items = obj.get(list_key)
+        if isinstance(items, list):
+            for it in items:
+                if isinstance(it, dict):
+                    for k in _FRAME_KEYS:
+                        if isinstance(it.get(k), list):
+                            it[k] = [x for v in it[k] for x in conv(v)]
+    return obj
+
+
 def parse_observation(text: str, *, window_id: str, frames: list[FrameRef],
-                      predicate_ids: list[str]) -> ParsedObservation:
-    obj = extract_json_object(text)
+                      predicate_ids: list[str], labels: dict[str, str] | None = None) -> ParsedObservation:
+    obj = _map_labels(extract_json_object(text), labels)
     try:
         raw = RawObservationOutput.model_validate(obj)
     except ValidationError as e:
@@ -321,8 +356,8 @@ def parse_observation(text: str, *, window_id: str, frames: list[FrameRef],
 
 
 def parse_verification(text: str, *, candidate_id: str, frames: list[FrameRef],
-                       predicate_ids: list[str]) -> ParsedVerification:
-    obj = extract_json_object(text)
+                       predicate_ids: list[str], labels: dict[str, str] | None = None) -> ParsedVerification:
+    obj = _map_labels(extract_json_object(text), labels)
     try:
         raw = RawVerificationOutput.model_validate(obj)
     except ValidationError as e:

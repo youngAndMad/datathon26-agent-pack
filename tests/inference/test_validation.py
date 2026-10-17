@@ -120,3 +120,33 @@ def test_neutralize_keeps_plain_visual_text():
 
 def test_extract_prefers_first_complete_object():
     assert extract_json_object('noise {"a": 1} {"b": 2}') == {"a": 1}
+
+
+def test_index_label_mode_maps_integers_to_request_ids(frames):
+    labels = {str(i + 1): f.frame_id for i, f in enumerate(frames)}
+    obj = json.loads(good_observation())
+    obj["observations"][0]["frame_ids"] = [4, "2"]
+    obj["cue_assessments"][0]["supporting_frame_ids"] = [5]
+    obj["cue_assessments"][0]["contradicting_frame_ids"] = [1]
+    p = parse_observation(json.dumps(obj), window_id="w03", frames=frames, predicate_ids=PIDS, labels=labels)
+    assert p.observations[0].frame_ids == ["f0001", "f0003"]
+    assert p.cue_assessments[0].supporting_frame_ids == ["f0004"]
+    obj["observations"][0]["frame_ids"] = [7]  # only 6 frames supplied
+    with pytest.raises(OutputInvalid, match="unknown frame id"):
+        parse_observation(json.dumps(obj), window_id="w03", frames=frames, predicate_ids=PIDS, labels=labels)
+    obj["observations"][0]["frame_ids"] = [True]
+    with pytest.raises(OutputInvalid):
+        parse_observation(json.dumps(obj), window_id="w03", frames=frames, predicate_ids=PIDS, labels=labels)
+
+
+def test_index_ranges_expand_and_bad_ranges_are_rejected(frames):
+    labels = {str(i + 1): f.frame_id for i, f in enumerate(frames)}
+    obj = json.loads(good_observation())
+    obj["observations"][0]["frame_ids"] = ["2-4", 6]
+    obj["cue_assessments"] = []
+    p = parse_observation(json.dumps(obj), window_id="w03", frames=frames, predicate_ids=PIDS, labels=labels)
+    assert p.observations[0].frame_ids == ["f0001", "f0002", "f0003", "f0005"]
+    for bad in ("4-2", "5-9", "0-3"):
+        obj["observations"][0]["frame_ids"] = [bad]
+        with pytest.raises(OutputInvalid, match="unknown frame id"):
+            parse_observation(json.dumps(obj), window_id="w03", frames=frames, predicate_ids=PIDS, labels=labels)
