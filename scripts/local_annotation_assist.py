@@ -43,7 +43,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", required=True, type=Path)
     ap.add_argument("--only", default="")
-    ap.add_argument("--rules", default="CW01,CW02,CW03,CW04,CW05")
+    ap.add_argument("--rules", default="CW01,CW02,CW04")
     args = ap.parse_args()
     os.environ.setdefault("CASHWATCH_MODE", "test")
     os.environ["HF_HUB_OFFLINE"] = "1"
@@ -55,6 +55,7 @@ def main() -> int:
     from cashwatch.media import create_media
     from cashwatch.pipeline.planner import build_plan
     from cashwatch.rules import load_registry
+    from cashwatch.rules.registry import _definition
     from cashwatch.settings import get_settings
 
     settings = get_settings()
@@ -63,9 +64,11 @@ def main() -> int:
         return 2
     reg = load_registry(ROOT / "rules" / "registry.yaml", require_approved=False)
     wanted = [r.strip() for r in args.rules.split(",") if r.strip()]
-    cues = [d for rid in wanted if rid in reg.all_rule_ids() for d in reg.definitions(rid)]
+    # Draft (not approved) rules are allowed here: these are review hints, never published events.
+    drafts = lambda rid: [_definition(p) for p in reg.spec(rid).predicates]  # noqa: E731
+    cues = [d for rid in wanted if rid in reg.all_rule_ids() for d in drafts(rid)]
     rule_names = {rid: reg.spec(rid).type_ru for rid in reg.all_rule_ids()}
-    pred_rule = {d.predicate_id: rid for rid in wanted if rid in reg.all_rule_ids() for d in reg.definitions(rid)}
+    pred_rule = {d.predicate_id: rid for rid in wanted if rid in reg.all_rule_ids() for d in drafts(rid)}
 
     clips = sorted((sha256(p), p) for p in args.dataset.rglob("*") if p.suffix.lower() == ".mov")
     ids = {s: f"c{i + 1:03d}" for i, (s, _) in enumerate(clips)}
@@ -90,29 +93,36 @@ def main() -> int:
                 frames = {f.frame_id: f for f in man.frames}
                 windows = []
                 for w in plan.windows:
-                    req = ObservationRequest(
-                        job_id="assist", window_id=w.window_id, start_sec=w.start_sec, end_sec=w.end_sec,
-                        frames=[frames[i] for i in man.window_frames[w.window_id]], task_version="assist-v1",
-                        cue_predicates=cues, max_output_tokens=int(settings.profile["sampling"]["observe_max_new_tokens"]))
-                    try:
-                        b = perception.observe(req, work, Deadline.in_seconds(300))
-                    except Exception as e:  # keep going; record the failure for the reviewer
-                        windows.append({"window_id": w.window_id, "start": w.start_sec, "end": w.end_sec,
-                                        "error": getattr(e, "code", type(e).__name__)})
-                        if not perception.ready():
-                            perception.warmup(timeout_sec=180)
-                        continue
+                    wframes = [frames[i] for i in man.window_frames[w.window_id]]
                     t = lambda ids_: sorted(round(frames[i].relative_sec, 2) for i in ids_ if i in frames)  # noqa: E731
-                    windows.append({
-                        "window_id": w.window_id, "start": w.start_sec, "end": w.end_sec,
-                        "observations": [{"t": t(o.frame_ids), "action": o.action, "actors": o.actor_refs,
-                                          "objects": o.object_hypotheses, "visibility": o.visibility,
-                                          "uncertainty": o.uncertainty} for o in b.observations],
-                        "cues": [{"predicate_id": a.predicate_id, "rule_id": pred_rule.get(a.predicate_id),
-                                  "state": a.state, "supporting_t": t(a.supporting_frame_ids),
-                                  "contradicting_t": t(a.contradicting_frame_ids), "note": a.reasoning_note}
-                                 for a in b.cue_assessments],
-                        "limitations": b.limitations})
+                    entry = {"window_id": w.window_id, "start": w.start_sec, "end": w.end_sec,
+                             "observations": [], "cues": [], "limitations": []}
+                    # Two calls per window: neutral observations (no cues), then draft-rule cues.
+                    for kind, cue_set in (("observe", []), ("cues", cues)):
+                        req = ObservationRequest(
+                            job_id="assist", window_id=w.window_id, start_sec=w.start_sec, end_sec=w.end_sec,
+                            frames=wframes, task_version=f"assist-{kind}-v1", cue_predicates=cue_set,
+                            max_output_tokens=int(settings.profile["sampling"]["observe_max_new_tokens"]))
+                        try:
+                            b = perception.observe(req, work, Deadline.in_seconds(300))
+                        except Exception as e:  # keep going; record the failure for the reviewer
+                            entry.setdefault("error", []).append(f"{kind}:{getattr(e, 'code', type(e).__name__)}")
+                            if not perception.ready():
+                                perception.warmup(timeout_sec=180)
+                            continue
+                        if kind == "observe":
+                            entry["observations"] = [
+                                {"t": t(o.frame_ids), "action": o.action, "actors": o.actor_refs,
+                                 "objects": o.object_hypotheses, "visibility": o.visibility,
+                                 "uncertainty": o.uncertainty} for o in b.observations]
+                        entry["cues"] += [
+                            {"predicate_id": a.predicate_id, "rule_id": pred_rule.get(a.predicate_id), "state": a.state,
+                             "supporting_t": t(a.supporting_frame_ids), "contradicting_t": t(a.contradicting_frame_ids),
+                             "note": a.reasoning_note} for a in b.cue_assessments]
+                        entry["limitations"] += b.limitations
+                    if "error" in entry:
+                        entry["error"] = ", ".join(entry["error"])
+                    windows.append(entry)
                 doc = {"clip_id": cid, "source_sha256": sha, "duration_sec": meta.duration_sec,
                        "model": perception.info().model_dump(), "profile": plan.profile_id,
                        "status": "PROPOSAL — not a label until reviewed by a person", "windows": windows}
