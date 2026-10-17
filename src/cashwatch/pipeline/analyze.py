@@ -211,7 +211,14 @@ def analyze_job(
     unverified: list[CandidateEvent] = []
     all_frames: dict[str, FrameRef] = dict(frames_by_id)
     ver_times: list[float] = []
+    suppressed = 0
     for i, cand in enumerate(candidates):
+        if _covered_by_accepted(cand, decided):
+            # Same rule, interval already inside an accepted event: merge() would fold it into
+            # that event, so a second verification is redundant (not an unverified candidate).
+            suppressed += 1
+            ledger.refined.append(cand.candidate_id)
+            continue
         est = (statistics.median(ver_times) if ver_times else 15.0) * 1.3
         if deadline.remaining_sec() < est + evidence_reserve:
             unverified.extend(candidates[i:])
@@ -293,6 +300,19 @@ def analyze_job(
     write_outputs(report, out_dir)
     _timed(run, "committing", t0)
     return report
+
+
+def _covered_by_accepted(cand: CandidateEvent, decided: list[CandidateEvent]) -> bool:
+    span = max(cand.end_sec - cand.start_sec, 1e-6)
+    for d in decided:
+        if d.review_state != "accepted" or d.rule_id != cand.rule_id:
+            continue
+        # accepted interval as decided, widened by the refinement context actually inspected
+        lo, hi = d.start_sec - 3.0, d.end_sec + 3.0
+        overlap = max(0.0, min(hi, cand.end_sec) - max(lo, cand.start_sec))
+        if overlap / span >= 0.9:  # near-full containment only; adjacent events stay separate
+            return True
+    return False
 
 
 def _dedup(items: list[str]) -> list[str]:
