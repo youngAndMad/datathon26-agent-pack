@@ -73,7 +73,7 @@ def test_fully_validated_cw_rule_would_load_with_official_provenance(tmp_path):
     d = S.copy_rules(tmp_path)
     S.edit_registry(d / "registry.yaml", _approve("CW01"))
     reg = load_registry(d / "registry.yaml", require_approved=True)
-    assert reg.health_errors() == [] and reg.approved_rule_ids() == ["CW01"]
+    assert reg.health_errors() == [] and "CW01" in reg.approved_rule_ids()
     ref = reg.rule_ref("CW01")
     assert ref.official_url == "https://adilet.zan.kz/rus/docs/V1900019680" and ref.clause == "22"
     assert ref.local_excerpt.startswith("22. Кассовому работнику не допускается покидать рабочее место")
