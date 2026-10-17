@@ -6,7 +6,8 @@ its output into, a cloud-hosted assistant: the manifest contains organizer label
 restricted videos. Output defaults to evaluation/manifest/private/manifest.json (git-ignored).
 
 Input labels CSV (UTF-8, header row):
-  file,label_verdict,label_timestamps_sec,group,split[,label_types]
+  file,label_verdict,label_timestamps_sec,group,split[,label_types][,angle]
+  - angle: optional camera-angle/viewpoint id (e.g. a1, a2); enables per-angle metrics (FAQ: new angle in final)
   - file: path relative to --clips-dir (the filename is NOT copied into the manifest)
   - label_verdict: violation | no_violation  (organizer presence label)
   - label_timestamps_sec: ';'-separated seconds (organizer timestamps; may be empty)
@@ -79,6 +80,7 @@ def build(clips_dir: Path, labels_csv: Path) -> list[dict]:
         entries.append({"path": str(p), "sha256": sha256(p), "duration_sec": duration(p),
                         "label_verdict": verdict, "label_timestamps_sec": ts,
                         "label_types": types, "group": g, "split": split,
+                        "angle": (r.get("angle") or "").strip() or None,
                         "label_source": "organizer" + ("+local_review" if types else "")})
     entries.sort(key=lambda e: e["sha256"])
     if len({e["sha256"] for e in entries}) != len(entries):

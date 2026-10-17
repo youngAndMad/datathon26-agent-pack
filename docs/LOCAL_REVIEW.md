@@ -106,3 +106,31 @@ coding assistant. Never paste per-clip rows, descriptions or images.
 Typical loop on `dev`: look at misses/false positives locally → adjust the rule's predicate wording,
 counterexamples or temporal gate → `make test` → re-run benchmark on `dev`. Don't tune on `holdout`,
 and never on jury uploads.
+
+## 7. New camera angle (final check uses another angle — FAQ)
+
+The organizer clips appear to share one setup (all 464×848), so they say little about a new
+viewpoint. To measure it:
+
+1. **Film permitted staged takes from at least one other angle** (different height/side, other desk
+   or lighting), covering both violations and compliant look-alikes. Keep them local like the dataset.
+2. Add an `angle` column to `labels.csv` (e.g. `a1` organizer setup, `a2` your new angle) and rebuild
+   the manifest. Put new-angle takes in `val`/`holdout`, never only in `dev`; don't tune thresholds on them.
+3. `qa_benchmark.py` then reports `per_angle` metrics next to `per_split`.
+4. Stress test (cheap, not a substitute for real footage): transformed variants with preserved timing —
+   ```bash
+   .venv/bin/python scripts/qa_angle_stress.py --base-url http://127.0.0.1:8000 \
+     --key-file secrets/jury_api_key --clips data/dataset/open/videos
+   ```
+   Prints verdict agreement and event-time shift per variant (hflip, rot7, persp, zoom85, dark) — aggregates only.
+
+## 8. Demo preparation (plan §17)
+
+Process the clips you will show **before** the demo so they open instantly in «История проверок»:
+
+```bash
+.venv/bin/python scripts/demo_prepare.py --base-url http://127.0.0.1:8000 --key-file secrets/jury_api_key \
+  path/to/clip1.mov path/to/clip2.mov
+```
+
+Do one live upload as well, but don't depend on it finishing on stage.
