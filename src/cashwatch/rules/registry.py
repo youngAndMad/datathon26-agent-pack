@@ -42,8 +42,14 @@ _CONVENTION_ANCHOR_KIND = {
 class Registry:
     """Loaded, linted registry. Construct via ``load_registry``."""
 
-    def __init__(self, data: RegistryFile, base: Path, *, require_approved: bool) -> None:
+    def __init__(self, data: RegistryFile, base: Path, *, require_approved: bool,
+                 candidate_rules: frozenset[str] = frozenset()) -> None:
         self._data = data
+        # Evaluation-only: these draft rules are exposed if every SOURCE gate passes, skipping only
+        # the approval/local-validation gate (that is what the evaluation produces). Never used by
+        # the production worker; reports carry evaluation_only=True.
+        self.candidate_rules = candidate_rules
+        self.evaluation_only = bool(candidate_rules)
         self._base = base
         self.version: str = data.registry_version
         self.test_only: bool = data.test_only
@@ -227,7 +233,8 @@ class Registry:
                     problems.append(f"excerpt {eid} from unknown source")
             for msg in problems:
                 self._err(f"{r.rule_id}: {msg}")
-            if r.state != "approved":
+            candidate = r.rule_id in self.candidate_rules
+            if r.state != "approved" and not candidate:
                 continue
             # ------------- additional activation gates for approved rules
             gates: list[str] = []
@@ -262,13 +269,16 @@ class Registry:
             ss = r.source_status
             a = r.approval
             if not self.test_only:
-                if not (ss.clause_text == ss.edition == ss.applicability == "verified"):
-                    gates.append("clause/edition/applicability not verified")
-                if ss.local_visual_validation != "done":
-                    gates.append("local visual validation not done")
-                vc = a.validation_counts
-                if not (a.owner and a.date and vc and vc.positive >= 1 and vc.negative >= 1):
-                    gates.append("approval owner/date/validation counts missing")
+                if not (ss.clause_text == ss.edition == "verified"):
+                    gates.append("clause/edition not verified")
+                if not candidate:
+                    if ss.applicability != "verified":
+                        gates.append("applicability not verified")
+                    if ss.local_visual_validation != "done":
+                        gates.append("local visual validation not done")
+                    vc = a.validation_counts
+                    if not (a.owner and a.date and vc and vc.positive >= 1 and vc.negative >= 1):
+                        gates.append("approval owner/date/validation counts missing")
             elif not (a.owner and a.date):
                 gates.append("approval owner/date missing")
             if problems:
@@ -309,7 +319,8 @@ def _render_check(r: RuleSpec, ref: RuleRef) -> None:
         raise ValueError("template does not include source")
 
 
-def load_registry(path: Path | str, *, require_approved: bool, allow_test: bool = False) -> Registry:
+def load_registry(path: Path | str, *, require_approved: bool, allow_test: bool = False,
+                  candidate_rules: frozenset[str] | set[str] | None = None) -> Registry:
     """Load and lint a registry file.
 
     Raises PipelineError("rule_registry_invalid") when the file is missing/malformed or when a
@@ -327,4 +338,7 @@ def load_registry(path: Path | str, *, require_approved: bool, allow_test: bool 
     if data.test_only and not allow_test:
         raise PipelineError("rule_registry_invalid",
                             "test-only (SYNTHETIC TEST) registry refused outside explicit test mode")
-    return Registry(data, p.parent, require_approved=require_approved)
+    if candidate_rules and require_approved:
+        raise PipelineError("rule_registry_invalid", "candidate (evaluation-only) rules refused in production")
+    return Registry(data, p.parent, require_approved=require_approved,
+                    candidate_rules=frozenset(candidate_rules or ()))
