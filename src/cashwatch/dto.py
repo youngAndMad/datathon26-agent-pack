@@ -277,6 +277,9 @@ class VerificationRequest(Strict):
     boundary_notes_en: list[Annotated[str, Field(max_length=300)]] = Field(default_factory=list)
     interval_start_sec: NonNegSec
     interval_end_sec: NonNegSec
+    # Internal routing only; the jury API is unchanged. Omission checks need
+    # explicit interval/visibility answers, not compact yes/no cues alone.
+    requires_complete_interval: bool = False
     frames: list[FrameRef]
     task_version: str
     max_output_tokens: Annotated[int, Field(gt=0, le=2048)]

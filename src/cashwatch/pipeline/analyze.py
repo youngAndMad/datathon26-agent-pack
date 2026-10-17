@@ -10,6 +10,7 @@ technical failure into ``no_violation``.
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import os
 import statistics
@@ -48,6 +49,7 @@ from cashwatch.pipeline.planner import (
     CoverageLedger, build_plan, proposal_windows, refinement_times, select_tier, select_verification_frames,
 )
 from cashwatch.pipeline.validate import project_jury_result, validate_result
+from cashwatch.pipeline.diagnostics import DiagnosticCounters
 from cashwatch.ports import MediaPort, PerceptionPort, ReportingPort, RuleRegistry, RulesPort
 
 log = logging.getLogger("cashwatch.pipeline")
@@ -71,6 +73,8 @@ class PipelineContext:
     config_version: str = "unknown"
     # progress(stage, progress) -> False when the lease is lost
     progress: Callable[[Stage, StageProgress | None], bool] = lambda s, p: True
+    # Private evaluation hook: aggregate attrition only, never changes a verdict.
+    diagnostics: Callable[[dict], None] = lambda snapshot: None
 
 
 @dataclass
@@ -183,6 +187,8 @@ def analyze_job(
     job: JobInput, source: Path, work_dir: Path, out_dir: Path, ctx: PipelineContext, deadline: Deadline,
 ) -> AnalysisReport:
     run = _Run()
+    diagnostics = DiagnosticCounters(ctx.diagnostics)
+    diagnostics.emit("started")
     run.stages.append("receiving")  # upload persisted and job accepted before the worker claims it
     if getattr(ctx.registry, "test_only", False):
         # A clean result here only means "the synthetic test rule did not fire". Say so loudly.
@@ -246,6 +252,8 @@ def analyze_job(
     for w in windows:
         est = (statistics.median(win_times) if win_times else 10.0) * 1.3
         if not w.mandatory and (deadline.soft_expired() or deadline.remaining_sec() < est + 120):
+            diagnostics.bump("optional_windows_skipped", len([x for x in windows if not x.mandatory and x.window_id not in ledger.completed]))
+            diagnostics.emit("observing")
             run.limitations_ru.append("Дополнительные окна по движению пропущены из-за бюджета времени")
             break
         deadline.require_budget(f"observing {w.window_id}", est + evidence_reserve)
@@ -259,6 +267,8 @@ def analyze_job(
             batch = ctx.perception.observe(req, work_dir, deadline)
         except PipelineError as e:
             ledger.fail(w.window_id)
+            diagnostics.bump("observation_failures")
+            diagnostics.emit("observing")
             if w.mandatory or e.code in ("gpu_oom", "deadline_exceeded", "model_unavailable"):
                 raise
             run.limitations_ru.append("Одно дополнительное окно не проанализировано (ошибка модели)")
@@ -266,7 +276,11 @@ def analyze_job(
         win_times.append(time.monotonic() - tw)
         _check_batch(batch, req)
         batches.append(batch)
-        run.prompt_hashes["observe"] = batch.prompt_sha256
+        _record_prompt(run, "observe", batch.prompt_sha256)
+        diagnostics.bump("coarse_windows_completed" if w.mandatory else "optional_windows_completed")
+        for assessment in batch.cue_assessments:
+            diagnostics.bump("cue_" + assessment.state, rule=_rule_of(ctx.registry, assessment.predicate_id))
+        diagnostics.emit("observing")
         ledger.complete(w.window_id)
         done = len([x for x in ledger.completed if x in ledger.required])
         _stage(ctx, run, "observing", StageProgress(completed=done, total=total, unit="windows"))
@@ -281,6 +295,9 @@ def analyze_job(
     t0 = time.monotonic()
     rules = ctx.rules_factory(ctx.registry)
     candidates = sorted(rules.propose(batches, manifest), key=lambda c: (c.start_sec, c.candidate_id))
+    for candidate in candidates:
+        diagnostics.bump("candidates_proposed", rule=candidate.rule_id)
+    diagnostics.emit("proposed")
     _stage(ctx, run, "verifying", StageProgress(completed=0, total=len(candidates), unit="candidates"))
     decided: list[CandidateEvent] = []
     unverified: list[CandidateEvent] = []
@@ -292,11 +309,16 @@ def analyze_job(
             # Same rule, interval already inside an accepted event: merge() would fold it into
             # that event, so a second verification is redundant (not an unverified candidate).
             suppressed += 1
+            diagnostics.bump("duplicate_candidates_skipped", rule=cand.rule_id)
+            diagnostics.emit("verifying")
             ledger.refined.append(cand.candidate_id)
             continue
         est = (statistics.median(ver_times) if ver_times else 15.0) * 1.3
         if deadline.remaining_sec() < est + evidence_reserve:
             unverified.extend(candidates[i:])
+            for pending in candidates[i:]:
+                diagnostics.bump("candidates_unverified", rule=pending.rule_id)
+            diagnostics.emit("verifying")
             break
         times = refinement_times(cand.start_sec, cand.end_sec, sampling, meta)
         rframes = ctx.media.frames_for_times(
@@ -309,16 +331,24 @@ def analyze_job(
         vreq = rules.build_verification(cand, rframes, job_id=job.job_id,
                                         max_output_tokens=int(sampling["verify_max_new_tokens"]))
         tv = time.monotonic()
+        diagnostics.bump("verification_attempted", rule=cand.rule_id)
+        diagnostics.emit("verifying")
         try:
             vres = ctx.perception.verify(vreq, work_dir, deadline)
         except PipelineError as e:
+            diagnostics.bump("verification_failures", rule=cand.rule_id)
+            diagnostics.bump("candidates_unverified", rule=cand.rule_id)
+            diagnostics.emit("verifying")
             if e.code in ("gpu_oom", "deadline_exceeded", "model_unavailable"):
                 raise
             unverified.append(cand)
             continue
         ver_times.append(time.monotonic() - tv)
-        run.prompt_hashes["verify"] = vres.prompt_sha256
-        decided.append(rules.decide(cand, vres, rframes, manifest))
+        _record_prompt(run, "verify", vres.prompt_sha256)
+        decision = rules.decide(cand, vres, rframes, manifest)
+        decided.append(decision)
+        diagnostics.bump("candidates_" + decision.review_state, rule=cand.rule_id)
+        diagnostics.emit("verifying")
         ledger.refined.append(cand.candidate_id)
         _stage(ctx, run, "verifying", StageProgress(completed=i + 1, total=len(candidates), unit="candidates"))
     accepted = [c for c in decided if c.review_state == "accepted"]
@@ -386,7 +416,16 @@ def analyze_job(
     deadline.check("committing")
     write_outputs(report, out_dir)
     _timed(run, "committing", t0)
+    for event in events:
+        diagnostics.bump("events_emitted", rule=event.rule.rule_id)
+    diagnostics.emit("complete")
     return report
+
+
+def _record_prompt(run: _Run, stage: str, prompt_hash: str) -> None:
+    """Order-sensitive digest of all stage calls, rather than only the last window."""
+    previous = run.prompt_hashes.get(stage, "")
+    run.prompt_hashes[stage] = hashlib.sha256((previous + ":" + prompt_hash).encode("ascii")).hexdigest()
 
 
 def _covered_by_accepted(cand: CandidateEvent, decided: list[CandidateEvent]) -> bool:

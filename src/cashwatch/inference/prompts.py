@@ -2,8 +2,9 @@
 
 Derived from agents/LOCAL_MODEL_PROMPTS.md. The system prompts are fixed text; the user payload
 is assembled from typed request fields only (frame ids, real timestamps, registry predicate
-text). ``prompt_sha256`` = sha256 over the exact system prompt + user template source, so any
-wording change produces a new hash recorded in each report.
+text). Legacy template constants identify prompt versions. Compact prompts hash the
+rendered system text and ordered segments; adapters combine hashes for multiple calls,
+so changed conditions and exclusion rechecks are reflected in report provenance.
 
 A prompt is a list of *segments*: ("text", str) or ("image", index into the frame list), in
 order, so frames are interleaved with "Frame <id> at <t>s" labels.
@@ -12,6 +13,7 @@ order, so frames are interleaved with "Frame <id> at <t>s" labels.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 
 from cashwatch.dto import FrameRef, ObservationRequest, VerificationRequest, ts
@@ -31,8 +33,8 @@ MAX_OBJECT_CHARS = 80
 MAX_ACTOR_CHARS = 32
 
 OBSERVE_PROMPT_VERSION = "observe-v1"
-CUE_PROMPT_VERSION = "cue-v1"
-VERIFY_COMPACT_VERSION = "verify-compact-v1"
+CUE_PROMPT_VERSION = "cue-v2"
+VERIFY_COMPACT_VERSION = "verify-compact-v2"
 VERIFY_PROMPT_VERSION = "verify-v2"
 REPAIR_PROMPT_VERSION = "repair-v1"
 
@@ -154,6 +156,17 @@ class BuiltPrompt:
     prompt_sha256: str
 
 
+def call_prompt_hash(system: str, segments: list[Segment]) -> str:
+    """Hash exact prompt text and ordered image slots, never image bytes."""
+    return hashlib.sha256(json.dumps([system, segments], ensure_ascii=False,
+                                    separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def combined_prompt_hash(hashes: list[str]) -> str:
+    """Order-sensitive provenance for all prompts used by a logical model stage."""
+    return hashlib.sha256(("cashwatch-prompt-sequence-v1\n" + "\n".join(hashes)).encode()).hexdigest()
+
+
 def _fmt_t(sec: float) -> str:
     return f"{ts(sec):.3f}"
 
@@ -222,13 +235,13 @@ def build_cue_prompt(req: ObservationRequest) -> BuiltPrompt:
     for i, p in enumerate(req.cue_predicates, 1):
         q = f"Q{i}: {p.question_en}"
         if p.counterexamples_en:
-            q += " (Not: " + "; ".join(p.counterexamples_en[:2]) + ")"
+            q += " (Not: " + "; ".join(dict.fromkeys(p.counterexamples_en)) + ")"
         qs.append(q)
     head, tail = CUE_USER_TEMPLATE.split("{frames}")
     segs: list[Segment] = [("text", head.format(n=len(req.frames), gaps=_gaps(req.frames)))]
     segs.extend(_frame_segments(req.frames, "index"))
     segs.append(("text", tail.format(questions="\n".join(qs))))
-    return BuiltPrompt(CUE_SYSTEM, segs, CUE_PROMPT_SHA256)
+    return BuiltPrompt(CUE_SYSTEM, segs, call_prompt_hash(CUE_SYSTEM, segs))
 
 
 VERIFY_COMPACT_SYSTEM = """You check a few visual statements against ordered video frames from a cash desk. Look only at the pixels.
@@ -254,14 +267,16 @@ def build_verify_compact_prompt(req: VerificationRequest) -> BuiltPrompt:
     for i, p in enumerate(req.predicates, 1):
         q = f"Q{i}: {p.question_en}"
         if p.counterexamples_en:
-            q += " (Not: " + "; ".join(p.counterexamples_en[:2]) + ")"
+            q += " (Not: " + "; ".join(dict.fromkeys(p.counterexamples_en)) + ")"
         qs.append(q)
-    context = " ".join((req.scope_conditions_en + req.boundary_notes_en)[:3]) or "cash desk scene"
+    context = ("Applicability:\n" + _bullet(list(dict.fromkeys(req.scope_conditions_en)))
+               + "\nOpportunity/boundary conditions:\n"
+               + _bullet(list(dict.fromkeys(req.boundary_notes_en))))
     head, tail = VERIFY_COMPACT_USER_TEMPLATE.split("{frames}")
     segs: list[Segment] = [("text", head.format(n=len(req.frames), gaps=_gaps(req.frames)))]
     segs.extend(_frame_segments(req.frames, "index"))
     segs.append(("text", tail.format(context=context, questions="\n".join(qs))))
-    return BuiltPrompt(VERIFY_COMPACT_SYSTEM, segs, VERIFY_COMPACT_SHA256)
+    return BuiltPrompt(VERIFY_COMPACT_SYSTEM, segs, call_prompt_hash(VERIFY_COMPACT_SYSTEM, segs))
 
 
 def _bullet(lines: list[str]) -> str:

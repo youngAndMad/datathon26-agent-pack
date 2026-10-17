@@ -393,19 +393,40 @@ def _frame_numbers(text: str, n: int) -> list[int]:
 
 
 def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str],
-               yes_without_frames_is_window: bool = False) -> list[PredicateAssessment]:
+               yes_without_frames_is_window: bool = False,
+               strict: bool = False) -> list[PredicateAssessment]:
     """Parse compact answers: "Q1: yes 3-9", "Q2: no", "Q3: yes 5-9; no 1-4", "Q4: unclear".
-    Missing/garbled answers become unknown; out-of-range frame numbers are dropped."""
+    Coarse cues tolerate missing answers. Strict verification requires every answer,
+    accepts explicit unclear, and rejects malformed or foreign frame references."""
     n = len(frames)
     answers: dict[int, tuple[list[int], list[int], bool, bool]] = {}
     for line in text.splitlines():
         m = _CUE_LINE.match(line)
         if not m:
+            if strict and line.strip():
+                raise OutputInvalid("unexpected compact answer text")
             continue
         q = int(m.group(1))
         if not 1 <= q <= len(predicate_ids) or q in answers:
+            if strict:
+                raise OutputInvalid("duplicate or unknown compact question")
             continue
-        body = m.group(2).lower()
+        body = m.group(2).lower().strip()
+        if strict and body != "unclear":
+            seen = set()
+            for part in re.split(r"[;|]", body):
+                match = re.fullmatch(r"\s*(yes|no)(?:\s+(\d+(?:\s*[-–]\s*\d+)?(?:\s*,\s*\d+(?:\s*[-–]\s*\d+)?)*))?\s*", part)
+                if not match or match.group(1) in seen:
+                    raise OutputInvalid("malformed compact answer")
+                seen.add(match.group(1))
+                refs = match.group(2) or ""
+                if match.group(1) == "yes" and not refs:
+                    raise OutputInvalid("verification yes requires frame references")
+                if any(not 1 <= int(x) <= n for x in re.findall(r"\d+", refs)):
+                    raise OutputInvalid("compact frame reference outside request")
+                for lo, hi in re.findall(r"(\d+)\s*[-–]\s*(\d+)", refs):
+                    if int(lo) > int(hi):
+                        raise OutputInvalid("reversed compact frame range")
         yes_part = no_part = ""
         said_yes = said_no = False
         for part in re.split(r"[;|]", body):
@@ -415,9 +436,15 @@ def parse_cues(text: str, *, frames: list[FrameRef], predicate_ids: list[str],
             elif part.startswith("no"):
                 said_no, no_part = True, part[2:]
         answers[q] = (_frame_numbers(yes_part, n), _frame_numbers(no_part, n), said_yes, said_no)
+    if strict and len(answers) != len(predicate_ids):
+        raise OutputInvalid("missing compact answers")
     out: list[PredicateAssessment] = []
     for q, pid in enumerate(predicate_ids, 1):
         yes, no, said_yes, said_no = answers.get(q, ([], [], False, False))
+        if strict and (set(yes) & set(no) or (said_yes and said_no and not no)):
+            out.append(PredicateAssessment(predicate_id=pid, state="unknown", visibility="partial",
+                                           reasoning_note="conflicting compact frame evidence"))
+            continue
         if said_yes and not yes and yes_without_frames_is_window:
             yes = list(range(1, n + 1))  # coarse proposal only; anchors come from verification
         yes_ids = [frames[i - 1].frame_id for i in yes]

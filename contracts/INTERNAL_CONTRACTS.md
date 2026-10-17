@@ -28,6 +28,8 @@ All paths are local and trusted only after containment validation. All times are
 
 `VerificationRequest`: candidate_id; approved rule predicate definitions and counterexamples; local frame refs; known interval boundaries; generation budget. `VerificationResult`: assessments; alternatives; interval_complete:boolean; visibility_sufficient:boolean; schema_valid:boolean.
 
+`VerificationRequest.requires_complete_interval` defaults to false and is set from the rule's temporal requirement. When true, the adapter must request explicit interval completeness and visibility in structured output. A model's positive completeness answer is necessary but not sufficient: the rules engine independently checks endpoint coverage, sample gaps and completion boundaries. This internal field does not change the jury API.
+
 ## Rules and reporting
 
 `CandidateEvent`: candidate_id, rule_id/version, start/end, anchor_frame_id, predicate assessments, counterexamples considered, provenance observation IDs, review state in proposed/accepted/rejected/unresolved. An unresolved candidate never becomes a public violation automatically.

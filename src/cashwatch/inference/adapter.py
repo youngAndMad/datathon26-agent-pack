@@ -164,6 +164,7 @@ class LocalPerception:
             # reliably inside the large JSON schema).
             obs_req = request.model_copy(update={"cue_predicates": []})
             prompt = P.build_observe_prompt(obs_req, mode)
+            prompt_hashes = [P.call_prompt_hash(prompt.system, prompt.segments)]
             labels = P.frame_labels(frames, mode) if mode == "index" else None
             ctx = {"kind": "observe", "window_id": request.window_id,
                    "frame_ids": [f.frame_id for f in frames], "predicate_ids": [], "label_mode": mode}
@@ -189,6 +190,7 @@ class LocalPerception:
             if pred_ids:
                 # Call 2: compact numbered yes/no cue questions.
                 cprompt = P.build_cue_prompt(request)
+                prompt_hashes.append(cprompt.prompt_sha256)
                 creq = GenRequest(system=cprompt.system, segments=cprompt.segments, images=images,
                                   max_tokens=16 + 24 * len(pred_ids), max_long_side=self.cfg.max_long_side_px,
                                   max_pixels=self.cfg.max_pixels,
@@ -202,7 +204,7 @@ class LocalPerception:
                 window_id=request.window_id, observations=observations,
                 cue_assessments=cues, parse_status=status,
                 limitations=limitations, elapsed_ms=int((time.monotonic() - t0) * 1000),
-                model_version=self.model_version, prompt_sha256=prompt.prompt_sha256,
+                model_version=self.model_version, prompt_sha256=P.combined_prompt_hash(prompt_hashes),
                 input_tokens=in_tok, output_tokens=out_tok,
             )
 
@@ -218,8 +220,31 @@ class LocalPerception:
             self._check_request(frames, pred_ids, window=None)
             images = self._load_frames(frames, work_dir)
             mode = self.cfg.frame_label_mode
+            if request.requires_complete_interval:
+                # Omission rules need explicit visibility/completeness answers. The
+                # rules engine independently enforces source boundaries and gap limits.
+                prompt = P.build_verify_prompt(request, mode)
+                labels = P.frame_labels(frames, mode) if mode == "index" else None
+                def parse_complete(text):
+                    return parse_verification(text, candidate_id=request.candidate_id,
+                                              frames=frames, predicate_ids=pred_ids, labels=labels)
+                ctx = {"kind": "verify", "candidate_id": request.candidate_id,
+                       "frame_ids": [f.frame_id for f in frames], "predicate_ids": pred_ids,
+                       "label_mode": mode}
+                parsed, status, _, _ = self._run(
+                    "verify", prompt, images, request.max_output_tokens, self.cfg.verify_call_cap_sec,
+                    deadline, parse_complete, ctx, frames, pred_ids)
+                return VerificationResult(
+                    candidate_id=request.candidate_id, assessments=parsed.assessments,
+                    plausible_alternatives=parsed.plausible_alternatives,
+                    interval_complete=parsed.interval_complete,
+                    visibility_sufficient=parsed.visibility_sufficient, schema_valid=True,
+                    parse_status=status, limitations=parsed.limitations,
+                    elapsed_ms=int((time.monotonic() - t0) * 1000), model_version=self.model_version,
+                    prompt_sha256=P.call_prompt_hash(prompt.system, prompt.segments))
             # Compact numbered statements (small models fail large JSON schemas, see D013).
             prompt = P.build_verify_compact_prompt(request)
+            prompt_hashes = [prompt.prompt_sha256]
             ctx = {"kind": "verify", "candidate_id": request.candidate_id,
                    "frame_ids": [f.frame_id for f in frames], "predicate_ids": pred_ids, "label_mode": "index"}
             req = GenRequest(system=prompt.system, segments=prompt.segments, images=images,
@@ -238,6 +263,7 @@ class LocalPerception:
                                        f"{res.text[:2000]}\nRewrite it now.")],
                     images=[], max_tokens=24 + 40 * n,
                     context=dict(ctx, repair=True, error="no statement answered"))
+                prompt_hashes.append(P.call_prompt_hash(rreq.system, rreq.segments))
                 rres = self._generate("verify-repair", rreq, self.cfg.repair_call_cap_sec, deadline)
                 assessments, _ = self._read_verify(rres.text, request, frames, pred_ids)
                 status = "repaired"
@@ -246,15 +272,21 @@ class LocalPerception:
             # Exclusions (compliant alternatives) asked one at a time: inside a list a small model
             # tends to skip them or echo the other answers.
             for i, p in enumerate(request.predicates):
-                if ".excl_" not in p.predicate_id or deadline.remaining_sec() < 20:
+                if (".excl_" not in p.predicate_id or assessments[i].state != "unknown"
+                        or assessments[i].reasoning_note == "conflicting compact frame evidence"
+                        or deadline.remaining_sec() < 20):
                     continue
                 single = request.model_copy(update={"predicates": [p]})
                 sp = P.build_verify_compact_prompt(single)
+                prompt_hashes.append(sp.prompt_sha256)
                 sreq = GenRequest(system=sp.system, segments=sp.segments, images=images, max_tokens=48,
                                   max_long_side=self.cfg.max_long_side_px, max_pixels=self.cfg.max_pixels,
                                   context=dict(ctx, kind="verify-exclusion", predicate_ids=[p.predicate_id]))
                 sres = self._generate("verify", sreq, self.cfg.verify_call_cap_sec, deadline)
-                got = parse_cues(sres.text, frames=frames, predicate_ids=[p.predicate_id])[0]
+                try:
+                    got = parse_cues(sres.text, frames=frames, predicate_ids=[p.predicate_id], strict=True)[0]
+                except OutputInvalid:
+                    continue  # Keep unresolved; malformed rechecks cannot clear exclusions.
                 if got.state != "unknown":
                     assessments[i] = got
             return VerificationResult(
@@ -263,14 +295,16 @@ class LocalPerception:
                 # stays False so omission rules (requires_complete_interval) remain unresolved.
                 interval_complete=False, visibility_sufficient=True, schema_valid=True,  # visibility via rule predicates
                 parse_status=status, limitations=[], elapsed_ms=int((time.monotonic() - t0) * 1000),
-                model_version=self.model_version, prompt_sha256=prompt.prompt_sha256,
+                model_version=self.model_version, prompt_sha256=P.combined_prompt_hash(prompt_hashes),
             )
 
     def _read_verify(self, text: str, request: VerificationRequest, frames: list[FrameRef], pred_ids: list[str]):
         """Compact lines first; legacy JSON verification objects are still accepted."""
-        a = parse_cues(text, frames=frames, predicate_ids=pred_ids)
-        if any(x.state != "unknown" for x in a):
+        try:
+            a = parse_cues(text, frames=frames, predicate_ids=pred_ids, strict=True)
             return a, "ok"
+        except OutputInvalid:
+            a = parse_cues("", frames=frames, predicate_ids=pred_ids)
         try:
             parsed = parse_verification(text, candidate_id=request.candidate_id, frames=frames,
                                         predicate_ids=pred_ids, labels=None)

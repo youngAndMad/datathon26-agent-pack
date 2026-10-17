@@ -70,7 +70,7 @@ def test_single_event_violation_validated(tmp_path):
     assert v.timecode_sec != 20.0 and abs(v.timecode_sec - 20.0) < 0.35  # actual PTS, not requested time
     assert base64.b64decode(v.evidence_frames[0].image_base64)[:3] == b"\xff\xd8\xff"
     assert "https://adilet.zan.kz/" in v.description
-    assert json.loads((out / "jury.json").read_text())["verdict"] == "violation"
+    assert json.loads((out / "jury.json").read_text(encoding="utf-8"))["verdict"] == "violation"
     assert set(report.coverage.required_window_ids) <= set(report.coverage.completed_window_ids)
 
 

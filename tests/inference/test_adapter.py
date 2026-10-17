@@ -26,6 +26,14 @@ def _fake(responder=None):
     return p
 
 
+def _observation_hash(request, mode):
+    neutral = P.build_observe_prompt(request.model_copy(update={"cue_predicates": []}), mode)
+    hashes = [P.call_prompt_hash(neutral.system, neutral.segments)]
+    if request.cue_predicates:
+        hashes.append(P.build_cue_prompt(request).prompt_sha256)
+    return P.combined_prompt_hash(hashes)
+
+
 def _scripted(*texts, cue="Q1: unclear\nQ2: unclear", cue_calls=None):
     calls = []
 
@@ -54,7 +62,7 @@ def test_fake_is_labeled_mock_and_satisfies_port(obs_request, work_dir):
     assert info.is_mock and info.adapter == "fake" and info.warmed_up
     b = p.observe(obs_request, work_dir, Deadline.in_seconds(30))
     assert b.observations == [] and [c.state for c in b.cue_assessments] == ["unknown", "unknown"]
-    assert b.prompt_sha256 == P.OBSERVE_PROMPT_SHA256 and b.parse_status == "ok"
+    assert b.prompt_sha256 == _observation_hash(obs_request, "id") and b.parse_status == "ok"
 
 
 def test_not_ready_before_warmup(obs_request, work_dir):
@@ -135,7 +143,8 @@ def test_verify_ok(ver_request, work_dir):
     responder, calls = _scripted("Q1: yes 4-6; no 1-3\nQ2: no")
     p = _fake(responder)
     r = p.verify(ver_request, work_dir, Deadline.in_seconds(30))
-    assert r.schema_valid and r.parse_status == "ok" and r.prompt_sha256 == P.VERIFY_COMPACT_SHA256
+    assert r.schema_valid and r.parse_status == "ok"
+    assert r.prompt_sha256 == P.combined_prompt_hash([P.build_verify_compact_prompt(ver_request).prompt_sha256])
     a, b = r.assessments
     assert a.state == "supported" and a.interval_start_sec == 3.0
     assert a.supporting_frame_ids == ["f0003", "f0004", "f0005"] and a.contradicting_frame_ids == ["f0000", "f0001", "f0002"]
@@ -146,20 +155,47 @@ def test_verify_ok(ver_request, work_dir):
     assert "Q1:" in text and "Q2:" in text and "Frame 1 at" in text
 
 
-def test_verify_ignores_out_of_range_frames_and_missing_lines(ver_request, work_dir):
-    responder, _ = _scripted("Q1: yes 2, 99\ngarbage")
+def test_verify_repairs_out_of_range_frames_and_missing_lines(ver_request, work_dir):
+    responder, calls = _scripted("Q1: yes 2, 99\ngarbage", "Q1: yes 2\nQ2: unclear")
     p = _fake(responder)
     r = p.verify(ver_request, work_dir, Deadline.in_seconds(30))
     assert r.assessments[0].supporting_frame_ids == ["f0001"] and r.assessments[1].state == "unknown"
+    assert r.parse_status == "repaired"
+    assert len(calls) == 3  # warmup, original, one text-only repair
+    assert calls[-1].context.get("repair") is True and calls[-1].images == []
+    assert r.prompt_sha256 == P.combined_prompt_hash([
+        P.call_prompt_hash(call.system, call.segments) for call in calls[1:]])
 
 
-def test_frame_path_containment_and_hash(obs_request, work_dir, tmp_path):
+def test_verify_invalid_references_twice_fail_bounded(ver_request, work_dir):
+    responder, calls = _scripted("Q1: yes 99\nQ2: unclear", "Q1: yes 99\nQ2: unclear")
+    p = _fake(responder)
+    with pytest.raises(PipelineError) as caught:
+        p.verify(ver_request, work_dir, Deadline.in_seconds(30))
+    assert caught.value.code == "model_output_invalid"
+    assert len(calls) == 3
+
+
+def test_symlink_frame_path_containment(obs_request, work_dir, tmp_path):
     p = _fake()
     outside = tmp_path / "outside.jpg"
     outside.write_bytes((work_dir / obs_request.frames[0].local_path).read_bytes())
     link = work_dir / "thumbs" / "link.jpg"
-    os.symlink(outside, link)
+    try:
+        os.symlink(outside, link)
+    except OSError as error:
+        if os.name == "nt" and getattr(error, "winerror", None) == 1314:
+            pytest.skip("Windows account lacks symbolic-link creation privilege")
+        raise
     f0 = obs_request.frames[0].model_copy(update={"local_path": "thumbs/link.jpg"})
+    req = obs_request.model_copy(update={"frames": [f0, *obs_request.frames[1:]]})
+    with pytest.raises(PipelineError, match="escapes"):
+        p.observe(req, work_dir, Deadline.in_seconds(30))
+
+
+def test_frame_path_traversal_and_hash(obs_request, work_dir):
+    p = _fake()
+    f0 = obs_request.frames[0].model_copy(update={"local_path": "../outside.jpg"})
     req = obs_request.model_copy(update={"frames": [f0, *obs_request.frames[1:]]})
     with pytest.raises(PipelineError, match="escapes"):
         p.observe(req, work_dir, Deadline.in_seconds(30))
@@ -219,7 +255,8 @@ def test_index_label_mode_prompt_and_roundtrip(obs_request, work_dir):
     b = p.observe(obs_request, work_dir, Deadline.in_seconds(30))
     text = "".join(s for k, s in calls[-1].segments if k == "text")
     assert "Frame 5 at 4.500s:" in text and "f0004" not in text
-    assert b.prompt_sha256 == P.OBSERVE_PROMPT_SHA256_INDEX != P.OBSERVE_PROMPT_SHA256
+    assert b.prompt_sha256 == _observation_hash(obs_request, "index")
+    assert b.prompt_sha256 != _observation_hash(obs_request, "id")
     assert b.observations[0].frame_ids == ["f0001", "f0003"]
     assert b.cue_assessments[0].supporting_frame_ids == ["f0004"]
     assert b.cue_assessments[0].interval_start_sec == 4.5
@@ -229,4 +266,5 @@ def test_default_config_uses_index_labels(obs_request, work_dir):
     p = create_perception(Settings(mode="test", backend="fake"))
     p.warmup(timeout_sec=5)
     b = p.observe(obs_request, work_dir, Deadline.in_seconds(30))
-    assert p.cfg.frame_label_mode == "index" and b.prompt_sha256 == P.OBSERVE_PROMPT_SHA256_INDEX
+    assert p.cfg.frame_label_mode == "index"
+    assert b.prompt_sha256 == _observation_hash(obs_request, "index")

@@ -13,6 +13,7 @@ Outputs (git-ignored): data/dev_eval/<run>/<clip>.json and summary.json.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import json
 import os
@@ -78,6 +79,10 @@ def main() -> int:
     if a.split:
         splits = json.loads(a.splits.read_text())
         clips = [c for c in clips if splits.get(c["clip"]) == a.split]
+    if not clips:
+        ap.error("evaluation selection is empty; no model was started")
+    if any(c.get("label") not in {"violation", "no_violation"} for c in clips):
+        ap.error("evaluation requires explicit violation/no_violation labels")
     run = a.run or datetime.now(UTC).strftime("ev-%m%d-%H%M%S")
     out_root = ROOT / "data" / "dev_eval" / run
     out_root.mkdir(parents=True, exist_ok=True)
@@ -100,11 +105,12 @@ def main() -> int:
                            request_started_at=iso_utc(now), accepted_at=iso_utc(now),
                            deadline_at=iso_utc(now + timedelta(seconds=settings.internal_terminal_sec)),
                            attempt=1, lease_generation=1, config_version="dev")
+            diagnostics = {}
             ctx = PipelineContext(media=media, perception=perception, registry=registry, rules_factory=create_rules,
                                   reporting=create_reporting(registry), profile=settings.profile, mode="test",
                                   limits={"max_duration_sec": settings.max_duration_sec,
                                           "max_pixel_area": settings.max_pixel_area},
-                                  config_version="dev")
+                                  config_version="dev", diagnostics=diagnostics.update)
             os.environ["CASHWATCH_DEBUG_DECISIONS"] = str(out_root / f"{c['clip']}.decisions.jsonl")
             t0 = time.monotonic()
             row = {"clip": c["clip"], "label": c.get("label"), "label_sec": c.get("label_sec")}
@@ -119,10 +125,15 @@ def main() -> int:
             except PipelineError as e:
                 row.update(status="failed", error=e.code, detail=e.detail[:200])
                 if not perception.ready():
-                    perception.warmup(timeout_sec=180)
+                    try:
+                        perception.warmup(timeout_sec=180)
+                    except Exception:
+                        # Preserve this failure in the denominator even if recovery fails.
+                        row["recovery_error"] = "warmup_failed"
             except Exception:
                 row.update(status="failed", error="internal", detail=traceback.format_exc(limit=3)[-400:])
             row["sec"] = round(time.monotonic() - t0, 1)
+            row["diagnostics"] = diagnostics
             shutil.rmtree(work, ignore_errors=True)
             (out_root / f"{c['clip']}.json").write_text(json.dumps(row, ensure_ascii=False, indent=1))
             results.append(row)
@@ -132,38 +143,112 @@ def main() -> int:
         perception.close()
     summary = summarize(results)
     summary.update(run=run, rules=sorted(rules), profile=settings.profile.get("profile_id"))
+    summary["reproducibility"] = configuration_fingerprint(settings, a.registry)
+    summary["evaluation_scope"] = {
+        "split": a.split or "all_selected",
+        "independent_holdout": False,
+        "note": "Development evaluation; a split name does not establish untouched holdout data.",
+        "selection_sha256": hashlib.sha256(json.dumps(sorted(c["clip"] for c in clips)).encode()).hexdigest(),
+        "splits_sha256": sha256(a.splits) if a.split else None,
+    }
     (out_root / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1))
     print("SUMMARY", json.dumps(summary, ensure_ascii=False))
     return 0
 
 
 def summarize(rows: list[dict]) -> dict:
+    """Keep legacy penalized confusion fields, add explicit completed-only metrics.
+
+    Failed jobs never imply a model verdict. Legacy FP/FN include failures for
+    backward compatibility only; use completed_classification for recognition.
+    Per-rule output and stage counts cannot identify the cause of a false negative.
+    """
+    if not rows:
+        raise ValueError("evaluation selection is empty")
+    if any(r.get("label") not in {"violation", "no_violation"} for r in rows):
+        raise ValueError("explicit binary labels required")
     tp = fp = tn = fn = failed = 0
+    complete = Counter(tp=0, fp=0, tn=0, fn=0)
+    failures = Counter()
+    emitted = Counter()
+    stage_counts = Counter()
+    per_rule = {}
+    diagnostics_rows = 0
     errs = []
     for r in rows:
+        diagnostic = r.get("diagnostics", {})
+        if diagnostic:
+            diagnostics_rows += 1
+            stage_counts.update(diagnostic.get("counters", {}))
+            for rule, counts in diagnostic.get("per_rule", {}).items():
+                per_rule.setdefault(rule, Counter()).update(counts)
         pos = r.get("label") == "violation"
         if r.get("status") != "done":
             failed += 1
             fn += pos
             fp += not pos
+            failures[str(r.get("error") or "unspecified")] += 1
             continue
+        if r.get("verdict") not in {"violation", "no_violation"}:
+            raise ValueError("completed result requires a valid verdict")
         pred = r["verdict"] == "violation"
+        complete["tp" if pos and pred else "fn" if pos else "fp" if pred else "tn"] += 1
+        emitted.update(e["rule"] for e in r.get("events", []))
         tp += pos and pred
         fn += pos and not pred
         fp += (not pos) and pred
         tn += (not pos) and not pred
-        if pos and pred and r.get("label_sec") is not None:
+        if pos and pred and r.get("label_sec") is not None and r.get("events"):
             errs.append(min(abs(e["t"] - r["label_sec"]) for e in r["events"]))
     prec = tp / (tp + fp) if tp + fp else None
     rec = tp / (tp + fn) if tp + fn else None
     return {"n": len(rows), "tp": tp, "fp": fp, "tn": tn, "fn": fn, "failed": failed,
+            "metrics_version": 2,
+            "legacy_confusion_semantics": "Top-level FP/FN and precision/recall/f1 penalize failed jobs; not a classifier confusion matrix.",
+            "completed": len(rows) - failed,
+            "completion_rate": round((len(rows) - failed) / len(rows), 3),
+            "failure_counts": dict(sorted(failures.items())),
+            "accuracy_all_submissions": round((tp + tn) / len(rows), 3),
+            "completed_classification": classification_metrics(complete),
+            "per_rule_emitted_events": dict(sorted(emitted.items())),
+            "pipeline_diagnostics": {"rows_with_diagnostics": diagnostics_rows,
+                "counters": dict(stage_counts), "per_rule": {k: dict(v) for k, v in per_rule.items()},
+                "note": "Observed pipeline counts only; not per-rule accuracy or inferred causes of false negatives."},
             "precision": round(prec, 3) if prec is not None else None,
             "recall": round(rec, 3) if rec is not None else None,
             "f1": round(2 * prec * rec / (prec + rec), 3) if prec and rec else None,
             "time_err_sec": {"n": len(errs), "median": round(statistics.median(errs), 2) if errs else None,
                              "max": round(max(errs), 2) if errs else None,
                              "within_2s": sum(e <= 2 for e in errs), "within_5s": sum(e <= 5 for e in errs)},
+            "time_err_semantics": "Nearest emitted event to one clip label on true-positive clips; not one-to-one event localization accuracy.",
             "latency_sec_max": max((r["sec"] for r in rows), default=None)}
+
+
+def classification_metrics(counts: dict) -> dict:
+    tp, fp, tn, fn = (counts[k] for k in ("tp", "fp", "tn", "fn"))
+    def ratio(n, d):
+        return round(n / d, 3) if d else None
+    return {**counts, "n": tp + fp + tn + fn,
+            "accuracy": ratio(tp + tn, tp + fp + tn + fn),
+            "precision": ratio(tp, tp + fp), "recall": ratio(tp, tp + fn),
+            "f1": ratio(2 * tp, 2 * tp + fp + fn)}
+
+
+def configuration_fingerprint(settings, registry_path: Path) -> dict:
+    """Hash configuration, never dump environment variables, keys or model files."""
+    model_files = {}
+    for name in ("config.json", "generation_config.json", "preprocessor_config.json"):
+        p = settings.model_path / name
+        model_files[name] = sha256(p) if p.is_file() else None
+    return {"profile_sha256": sha256(settings.profile_path),
+            "registry_sha256": sha256(registry_path),
+            "model_manifest_sha256": sha256(settings.model_manifest) if settings.model_manifest.is_file() else None,
+            "model_configuration_sha256": model_files,
+            "evaluator_sha256": sha256(Path(__file__)),
+            "inference_code_sha256": {name: sha256(ROOT / "src" / "cashwatch" / "inference" / name)
+                for name in ("prompts.py", "adapter.py")},
+            "backend": settings.backend, "device": settings.device,
+            "weights_verified_by_this_evaluator": False}
 
 
 if __name__ == "__main__":

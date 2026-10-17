@@ -194,6 +194,7 @@ class Rules:
             predicates=self._reg.definitions(rule.rule_id), scope_conditions_en=scope,
             boundary_notes_en=notes, interval_start_sec=candidate.start_sec,
             interval_end_sec=max(candidate.start_sec, candidate.end_sec), frames=ordered,
+            requires_complete_interval=t.requires_complete_interval,
             task_version=f"{TASK_VERSION}:{self._reg.version}:{rule.rule_id}@{rule.version}",
             max_output_tokens=max_output_tokens)
 
