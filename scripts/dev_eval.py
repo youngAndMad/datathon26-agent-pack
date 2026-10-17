@@ -16,7 +16,9 @@ import argparse
 from collections import Counter
 import hashlib
 import json
+import math
 import os
+import re
 import shutil
 import statistics
 import sys
@@ -38,9 +40,86 @@ def sha256(p: Path) -> str:
     return h.hexdigest()
 
 
+def positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("expected a positive integer")
+    return number
+
+
+def safe_component(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value) or value.endswith("."):
+        raise ValueError("run and clip names must be safe single path components")
+    if value.split(".")[0].upper() in {"CON", "PRN", "AUX", "NUL", *[f"COM{i}" for i in range(1, 10)], *[f"LPT{i}" for i in range(1, 10)]}:
+        raise ValueError("reserved Windows path component")
+    return value
+
+
+def load_selection(source: Path, *, manifest: bool, clips: str = "", split: str = "",
+                   splits_path: Path | None = None, expected_clips: int | None = None) -> list[dict]:
+    """Validate selection locally before model imports; never expose organizer data to prompts."""
+    raw = json.loads(source.read_text(encoding="utf-8-sig"))
+    if manifest:
+        if not isinstance(raw, dict) or raw.get("version") != 1 or not isinstance(raw.get("clips"), list):
+            raise ValueError("expected a version 1 evaluation manifest with clips")
+        raw = raw["clips"]
+    if not isinstance(raw, list):
+        raise ValueError("evaluation index must be a list")
+    rows, seen_ids, seen_hashes = [], set(), set()
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise ValueError("evaluation entries must be objects")
+        row = dict(entry)
+        if manifest:
+            row.update(clip=entry.get("clip_id"), file=entry.get("path"), label=entry.get("label_verdict"))
+        name = row.get("clip")
+        if not isinstance(name, str):
+            raise ValueError("missing clip id")
+        safe_component(name)
+        if name in seen_ids:
+            raise ValueError("duplicate clip ids")
+        seen_ids.add(name)
+        digest = row.get("sha256")
+        if manifest and (not isinstance(digest, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", digest)):
+            raise ValueError("manifest entries require SHA-256")
+        if digest:
+            digest = digest.lower()
+            if digest in seen_hashes:
+                raise ValueError("duplicate video SHA-256 values")
+            seen_hashes.add(digest)
+            row["sha256"] = digest
+        if row.get("label") not in {"violation", "no_violation"}:
+            raise ValueError("evaluation requires explicit violation/no_violation labels")
+        path = row.get("file")
+        if not isinstance(path, str) or not path or not Path(path).is_file():
+            raise ValueError("evaluation source file missing")
+        timestamps = row.get("label_timestamps_sec", [] if row.get("label_sec") is None else [row["label_sec"]])
+        if not isinstance(timestamps, list) or any(isinstance(t, bool) or not isinstance(t, (int, float)) or not math.isfinite(t) or t < 0 for t in timestamps):
+            raise ValueError("label timestamps must be finite nonnegative numbers")
+        row["label_timestamps_sec"] = timestamps
+        row["label_sec"] = timestamps[0] if timestamps else None
+        rows.append(row)
+    if clips:
+        wanted = {c.strip() for c in clips.split(",") if c.strip()}
+        if not wanted.issubset(seen_ids):
+            raise ValueError("requested clip ids are absent")
+        rows = [r for r in rows if r["clip"] in wanted]
+    if split:
+        splits = {} if manifest else json.loads(splits_path.read_text(encoding="utf-8"))
+        rows = [r for r in rows if (r.get("split") if manifest else splits.get(r["clip"])) == split]
+    if not rows:
+        raise ValueError("evaluation selection is empty; no model was started")
+    if expected_clips is not None and len(rows) != expected_clips:
+        raise ValueError(f"expected {expected_clips} selected clips, found {len(rows)}; no model was started")
+    return rows
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rules", required=True)
+    ap.add_argument("--manifest", type=Path)
+    ap.add_argument("--expected-clips", type=positive_int)
+    ap.add_argument("--check-selection", action="store_true")
     ap.add_argument("--clips", default="")
     ap.add_argument("--split", default="")
     ap.add_argument("--splits", type=Path, default=ROOT / "data" / "review_sheets" / "splits.json")
@@ -48,6 +127,19 @@ def main() -> int:
     ap.add_argument("--registry", type=Path, default=ROOT / "rules" / "registry.yaml")
     ap.add_argument("--profile", type=Path, default=None)
     a = ap.parse_args()
+    source = a.manifest or INDEX
+    try:
+        clips = load_selection(source, manifest=a.manifest is not None, clips=a.clips,
+                               split=a.split, splits_path=a.splits, expected_clips=a.expected_clips)
+        run = safe_component(a.run or datetime.now(UTC).strftime("ev-%m%d-%H%M%S"))
+        out_root = ROOT / "data" / "dev_eval" / run
+        if out_root.exists():
+            raise ValueError("run output already exists; choose a new --run name")
+    except (ValueError, OSError, TypeError) as exc:
+        ap.error(str(exc))
+    if a.check_selection:
+        print(json.dumps({"selected": len(clips), "verdict_counts": dict(Counter(c["label"] for c in clips)), "model_started": False}))
+        return 0
     os.environ["CASHWATCH_MODE"] = "test"
     os.environ.setdefault("CASHWATCH_BACKEND", "mlx")
     if a.profile:
@@ -71,21 +163,7 @@ def main() -> int:
     if set(exposed) != rules:
         print("rules not exposed:", sorted(rules - set(exposed)), registry.health_errors()[:5], file=sys.stderr)
         return 2
-    index = json.loads(INDEX.read_text())
-    clips = index
-    if a.clips:
-        want = {c.strip() for c in a.clips.split(",")}
-        clips = [c for c in index if c["clip"] in want]
-    if a.split:
-        splits = json.loads(a.splits.read_text())
-        clips = [c for c in clips if splits.get(c["clip"]) == a.split]
-    if not clips:
-        ap.error("evaluation selection is empty; no model was started")
-    if any(c.get("label") not in {"violation", "no_violation"} for c in clips):
-        ap.error("evaluation requires explicit violation/no_violation labels")
-    run = a.run or datetime.now(UTC).strftime("ev-%m%d-%H%M%S")
-    out_root = ROOT / "data" / "dev_eval" / run
-    out_root.mkdir(parents=True, exist_ok=True)
+    out_root.mkdir(parents=True, exist_ok=False)
     media = create_media(max_pixel_area=settings.max_pixel_area,
                          motion_fps=float(settings.profile["sampling"]["motion_proposal_fps"]))
     results = []
@@ -113,7 +191,8 @@ def main() -> int:
                                   config_version="dev", diagnostics=diagnostics.update)
             os.environ["CASHWATCH_DEBUG_DECISIONS"] = str(out_root / f"{c['clip']}.decisions.jsonl")
             t0 = time.monotonic()
-            row = {"clip": c["clip"], "label": c.get("label"), "label_sec": c.get("label_sec")}
+            row = {"clip": c["clip"], "label": c.get("label"), "label_sec": c.get("label_sec"),
+                   "label_timestamps_sec": c["label_timestamps_sec"]}
             try:
                 rep = analyze_job(job, src, work, out, ctx, Deadline(job.deadline_at))
                 row.update(status="done", verdict=rep.jury_result.verdict,
@@ -149,7 +228,9 @@ def main() -> int:
         "independent_holdout": False,
         "note": "Development evaluation; a split name does not establish untouched holdout data.",
         "selection_sha256": hashlib.sha256(json.dumps(sorted(c["clip"] for c in clips)).encode()).hexdigest(),
-        "splits_sha256": sha256(a.splits) if a.split else None,
+        "selection_source_sha256": sha256(source),
+        "selection_source_kind": "manifest" if a.manifest else "index",
+        "splits_sha256": sha256(a.splits) if a.split and not a.manifest else None,
     }
     (out_root / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1))
     print("SUMMARY", json.dumps(summary, ensure_ascii=False))
@@ -220,7 +301,7 @@ def summarize(rows: list[dict]) -> dict:
             "time_err_sec": {"n": len(errs), "median": round(statistics.median(errs), 2) if errs else None,
                              "max": round(max(errs), 2) if errs else None,
                              "within_2s": sum(e <= 2 for e in errs), "within_5s": sum(e <= 5 for e in errs)},
-            "time_err_semantics": "Nearest emitted event to one clip label on true-positive clips; not one-to-one event localization accuracy.",
+            "time_err_semantics": "Nearest emitted event to the first clip timestamp on true-positive clips; remaining timestamps are preserved but not scored. Not one-to-one event localization accuracy.",
             "latency_sec_max": max((r["sec"] for r in rows), default=None)}
 
 

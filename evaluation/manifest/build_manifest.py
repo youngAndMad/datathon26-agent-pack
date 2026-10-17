@@ -60,7 +60,9 @@ def _floats(s: str) -> list[float]:
 
 
 def build(clips_dir: Path, labels_csv: Path) -> list[dict]:
-    rows = list(csv.DictReader(labels_csv.open(encoding="utf-8")))
+    # Excel's CSV UTF-8 export commonly includes a BOM before the first header.
+    with labels_csv.open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.DictReader(stream))
     entries, group_split = [], {}
     for r in rows:
         p = (clips_dir / r["file"]).resolve()
