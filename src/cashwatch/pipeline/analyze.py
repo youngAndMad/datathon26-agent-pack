@@ -41,7 +41,7 @@ from cashwatch.dto import (
     ts,
 )
 from cashwatch.errors import PipelineError
-from cashwatch.pipeline.planner import CoverageLedger, build_plan, proposal_windows, refinement_times
+from cashwatch.pipeline.planner import CoverageLedger, build_plan, proposal_windows, refinement_times, select_tier
 from cashwatch.pipeline.validate import project_jury_result, validate_result
 from cashwatch.ports import MediaPort, PerceptionPort, ReportingPort, RuleRegistry, RulesPort
 
@@ -131,6 +131,7 @@ def analyze_job(
     check_limits(meta, ctx.limits)
     _timed(run, "probing", t0)
     run.stages.append("probing")
+    _, sampling = select_tier(meta, ctx.profile)  # prevalidated tier fixed for the whole job
 
     # ---------------------------------------------------------------- sampling
     _stage(ctx, run, "sampling")

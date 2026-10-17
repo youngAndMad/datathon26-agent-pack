@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from cashwatch.errors import PipelineError
 from cashwatch.dto import Coverage, MotionSample, SamplingPlan, SamplingWindow, VideoMetadata, ts
 
 
@@ -91,11 +92,34 @@ def proposal_windows(
     return out
 
 
+def count_coarse_windows(duration: float, sampling: dict) -> int:
+    win = float(sampling["window_sec"])
+    step = win - float(sampling["overlap_sec"])
+    return 1 if duration <= win else 1 + math.ceil((duration - win) / step)
+
+
+def select_tier(meta: VideoMetadata, profile: dict) -> tuple[str, dict]:
+    """Choose a prevalidated sampling tier BEFORE analysis (spec §9.2): the densest tier whose
+    measured per-window cost fits the mandatory observation budget. Never adapts mid-job."""
+    base = dict(profile["sampling"])
+    tiers = profile.get("sampling_tiers") or []
+    if not tiers:
+        return profile["profile_id"], base
+    budget = float(profile.get("budget_sec", {}).get("observe_total", 130))
+    duration = meta.last_frame_sec - meta.first_frame_sec
+    for tier in tiers:
+        merged = {**base, **{k: v for k, v in tier.items() if k not in ("tier_id", "est_window_sec")}}
+        est = count_coarse_windows(duration, merged) * float(tier["est_window_sec"])
+        if est <= budget:
+            return f"{profile['profile_id']}/{tier['tier_id']}", merged
+    raise PipelineError("limits_exceeded", "no prevalidated sampling tier fits the observation budget")
+
+
 def build_plan(meta: VideoMetadata, profile: dict, extra: list[SamplingWindow] | None = None) -> SamplingPlan:
-    sampling = profile["sampling"]
+    profile_id, sampling = select_tier(meta, profile)
     windows = coarse_windows(meta, sampling) + list(extra or [])
     return SamplingPlan(
-        profile_id=profile["profile_id"],
+        profile_id=profile_id,
         windows=windows,
         mandatory_window_ids=[w.window_id for w in windows if w.mandatory],
         maximum_frames_per_call=int(sampling["max_frames_per_observation"]),
