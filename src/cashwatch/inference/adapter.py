@@ -226,10 +226,23 @@ class LocalPerception:
                              max_tokens=min(int(request.max_output_tokens), 24 + 40 * len(pred_ids)),
                              max_long_side=self.cfg.max_long_side_px, max_pixels=self.cfg.max_pixels, context=ctx)
             res = self._generate("verify", req, self.cfg.verify_call_cap_sec, deadline)
-            assessments = parse_cues(res.text, frames=frames, predicate_ids=pred_ids)
-            answered = sum(a.state != "unknown" for a in assessments)
-            if answered == 0:
-                raise PipelineError("model_output_invalid", "verify: no statement answered")
+            assessments, status = self._read_verify(res.text, request, frames, pred_ids)
+            if assessments is None:
+                # One bounded repair (text only): reformat the previous answer, add no facts.
+                n = len(pred_ids)
+                rreq = GenRequest(
+                    system=("You fix the format of an earlier answer about video frames. Do not add facts. "
+                            "Rewrite it as one line per statement: Q<number>: yes <frames>; no <frames> "
+                            "or Q<number>: unclear. Frames are integers 1 to " + str(len(frames)) + "."),
+                    segments=[("text", f"There are {n} statements (Q1 to Q{n}).\nPrevious answer:\n"
+                                       f"{res.text[:2000]}\nRewrite it now.")],
+                    images=[], max_tokens=24 + 40 * n,
+                    context=dict(ctx, repair=True, error="no statement answered"))
+                rres = self._generate("verify-repair", rreq, self.cfg.repair_call_cap_sec, deadline)
+                assessments, _ = self._read_verify(rres.text, request, frames, pred_ids)
+                status = "repaired"
+                if assessments is None:
+                    raise PipelineError("model_output_invalid", "verify: no statement answered")
             # Exclusions (compliant alternatives) asked one at a time: inside a list a small model
             # tends to skip them or echo the other answers.
             for i, p in enumerate(request.predicates):
@@ -249,9 +262,22 @@ class LocalPerception:
                 # Completeness of an opportunity interval cannot be established by this format;
                 # stays False so omission rules (requires_complete_interval) remain unresolved.
                 interval_complete=False, visibility_sufficient=True, schema_valid=True,  # visibility via rule predicates
-                parse_status="ok", limitations=[], elapsed_ms=int((time.monotonic() - t0) * 1000),
+                parse_status=status, limitations=[], elapsed_ms=int((time.monotonic() - t0) * 1000),
                 model_version=self.model_version, prompt_sha256=prompt.prompt_sha256,
             )
+
+    def _read_verify(self, text: str, request: VerificationRequest, frames: list[FrameRef], pred_ids: list[str]):
+        """Compact lines first; legacy JSON verification objects are still accepted."""
+        a = parse_cues(text, frames=frames, predicate_ids=pred_ids)
+        if any(x.state != "unknown" for x in a):
+            return a, "ok"
+        try:
+            parsed = parse_verification(text, candidate_id=request.candidate_id, frames=frames,
+                                        predicate_ids=pred_ids, labels=None)
+        except OutputInvalid:
+            return None, "ok"
+        by_id = {x.predicate_id: x for x in parsed.assessments}
+        return [by_id.get(p, a[i]) for i, p in enumerate(pred_ids)], "ok"
 
     def close(self) -> None:
         with self._lock:

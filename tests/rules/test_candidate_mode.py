@@ -9,13 +9,13 @@ from cashwatch.settings import REPO_ROOT
 REG = REPO_ROOT / "rules" / "registry.yaml"
 
 
-def test_production_registry_has_no_approved_rules_by_default():
-    assert load_registry(REG, require_approved=False).approved_rule_ids() == []
+def test_production_registry_approved_set_is_exactly_d014():
+    assert load_registry(REG, require_approved=False).approved_rule_ids() == ["CW11", "CW12"]
 
 
 def test_candidate_rules_exposed_only_in_evaluation_mode():
     r = load_registry(REG, require_approved=False, candidate_rules={"CW10", "CW12"})
-    assert r.approved_rule_ids() == ["CW10", "CW12"] and r.evaluation_only
+    assert r.approved_rule_ids() == ["CW10", "CW11", "CW12"] and r.evaluation_only
     assert "https://adilet.zan.kz/" in r.rule_ref("CW10").official_url
 
 

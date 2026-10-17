@@ -93,7 +93,8 @@ def test_frames_interleaved_with_labels_in_order(obs_request, work_dir):
 def test_one_repair_then_ok(obs_request, work_dir):
     responder, calls = _scripted("```json\n{\"window_id\": \"w03\", \"observations\": [", good_observation())
     p = _fake(responder)
-    b = p.observe(obs_request, work_dir, Deadline.in_seconds(30))
+    no_cues = obs_request.model_copy(update={"cue_predicates": []})  # with cues, neutral output is not repaired
+    b = p.observe(no_cues, work_dir, Deadline.in_seconds(30))
     assert b.parse_status == "repaired"
     repair = calls[-1]
     assert repair.images == [] and repair.context.get("repair") is True

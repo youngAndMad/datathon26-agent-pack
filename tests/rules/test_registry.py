@@ -24,15 +24,17 @@ def _approve(rule_id):
     return fn
 
 
-def test_production_registry_has_zero_approved_rules_and_fails_readiness_honestly():
+def test_production_registry_exposes_only_validated_approved_rules():
     reg = load_registry(PROD, require_approved=True)
-    assert reg.approved_rule_ids() == [] and reg.cue_predicates() == []
-    errs = reg.health_errors()
-    assert len(errs) == 1 and errs[0].startswith("no approved rules")  # sources/lint otherwise clean
-    for rid in CW:
+    assert reg.approved_rule_ids() == ["CW11", "CW12"] and reg.health_errors() == []  # D014
+    assert {p.predicate_id for p in reg.cue_predicates()} == {"CW11.client_change", "CW12.personal_item_action"}
+    for rid in CW:  # original research seeds stay disabled
         with pytest.raises(KeyError):
             reg.rule_ref(rid)
         assert reg.spec(rid).state == "disabled" and reg.spec(rid).source_status.local_visual_validation == "blocked"
+    for rid in ("CW11", "CW12"):
+        a = reg.spec(rid).approval
+        assert a.owner and a.validation_counts.positive >= 1 and a.validation_counts.negative >= 1
     assert load_registry(PROD, require_approved=False).health_errors() == []
 
 
@@ -79,7 +81,8 @@ def test_fully_validated_cw_rule_would_load_with_official_provenance(tmp_path):
     assert ref.official_url == "https://adilet.zan.kz/rus/docs/V1900019680" and ref.clause == "22"
     assert ref.local_excerpt.startswith("22. Кассовому работнику не допускается покидать рабочее место")
     assert ref.source_snapshot_sha256 == sha256_file(d / "sources" / "L01-2026-10-17.api.json")
-    assert {p.predicate_id for p in reg.cue_predicates()} == {"CW01.service_in_progress"}  # coarse = triggers
+    assert "CW01.service_in_progress" in {p.predicate_id for p in reg.cue_predicates()}  # coarse = triggers
+    assert not {"CW01.leaves_position", "CW01.service_unfinished"} & {p.predicate_id for p in reg.cue_predicates()}
 
 
 def test_approved_rule_without_matching_snapshot_hash_rejected(tmp_path):
@@ -196,7 +199,7 @@ def test_registry_accepts_matching_document_identity(suffix):
     data["sources"]["L01"]["official_url"] += suffix
     reg = Registry(RegistryFile.model_validate(data), PROD.parent, require_approved=True)
     assert reg.health_errors() == []
-    assert reg.approved_rule_ids() == ["CW01"]
+    assert "CW01" in reg.approved_rule_ids()
 
 
 def test_registry_rejects_missing_snapshot_document_identity():

@@ -288,12 +288,12 @@ def test_unmapped_observations_become_review_notes_not_candidates(reg):
     assert all("не является нарушением" in n.text_ru for n in notes)
 
 
-def test_production_registry_proposes_nothing():
+def test_production_registry_proposes_only_approved_rules():
     prod = load_registry(S.RULES_DIR / "registry.yaml", require_approved=True)
     rules = create_rules(prod)
     m = S.manifest(30)
-    assert prod.cue_predicates() == []
-    assert rules.propose(S.batches(m, [], lambda p, t: "supported", observations=True), m) == []
+    cands = rules.propose(S.batches(m, [p.predicate_id for p in prod.cue_predicates()], lambda p, t: "supported", observations=True), m)
+    assert cands and {c.rule_id for c in cands} <= {"CW11", "CW12"}
 
 
 def test_verification_request_carries_registry_predicates_and_boundaries(reg):

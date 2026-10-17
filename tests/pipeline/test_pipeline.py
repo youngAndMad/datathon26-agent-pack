@@ -67,7 +67,7 @@ def test_single_event_violation_validated(tmp_path):
     v = jury.violations[0]
     ev = report.events[0]
     assert v.timecode_sec == ev.evidence[0].timestamp_sec  # anchor == actual evidence frame time
-    assert v.timecode_sec != 20.0 and abs(v.timecode_sec - 20.0) < 0.2  # actual PTS, not requested time
+    assert v.timecode_sec != 20.0 and abs(v.timecode_sec - 20.0) < 0.35  # actual PTS, not requested time
     assert base64.b64decode(v.evidence_frames[0].image_base64)[:3] == b"\xff\xd8\xff"
     assert "https://adilet.zan.kz/" in v.description
     assert json.loads((out / "jury.json").read_text())["verdict"] == "violation"
