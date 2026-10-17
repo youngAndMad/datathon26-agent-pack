@@ -216,26 +216,25 @@ class LocalPerception:
             self._check_request(frames, pred_ids, window=None)
             images = self._load_frames(frames, work_dir)
             mode = self.cfg.frame_label_mode
-            prompt = P.build_verify_prompt(request, mode)
-            labels = P.frame_labels(frames, mode) if mode == "index" else None
+            # Compact numbered statements (small models fail large JSON schemas, see D013).
+            prompt = P.build_verify_compact_prompt(request)
             ctx = {"kind": "verify", "candidate_id": request.candidate_id,
-                   "frame_ids": [f.frame_id for f in frames], "predicate_ids": pred_ids, "label_mode": mode}
-
-            def parse(text: str):
-                return parse_verification(text, candidate_id=request.candidate_id, frames=frames,
-                                          predicate_ids=pred_ids, labels=labels)
-
-            parsed, status, _in, _out = self._run(
-                "verify", prompt, images, request.max_output_tokens, self.cfg.verify_call_cap_sec,
-                deadline, parse, ctx, frames, pred_ids)
+                   "frame_ids": [f.frame_id for f in frames], "predicate_ids": pred_ids, "label_mode": "index"}
+            req = GenRequest(system=prompt.system, segments=prompt.segments, images=images,
+                             max_tokens=min(int(request.max_output_tokens), 24 + 40 * len(pred_ids)),
+                             max_long_side=self.cfg.max_long_side_px, max_pixels=self.cfg.max_pixels, context=ctx)
+            res = self._generate("verify", req, self.cfg.verify_call_cap_sec, deadline)
+            assessments = parse_cues(res.text, frames=frames, predicate_ids=pred_ids)
+            answered = sum(a.state != "unknown" for a in assessments)
+            if answered == 0:
+                raise PipelineError("model_output_invalid", "verify: no statement answered")
             return VerificationResult(
-                candidate_id=request.candidate_id, assessments=parsed.assessments,
-                plausible_alternatives=parsed.plausible_alternatives,
-                interval_complete=parsed.interval_complete,
-                visibility_sufficient=parsed.visibility_sufficient, schema_valid=True,
-                parse_status=status, limitations=parsed.limitations,
-                elapsed_ms=int((time.monotonic() - t0) * 1000), model_version=self.model_version,
-                prompt_sha256=prompt.prompt_sha256,
+                candidate_id=request.candidate_id, assessments=assessments, plausible_alternatives=[],
+                # Completeness of an opportunity interval cannot be established by this format;
+                # stays False so omission rules (requires_complete_interval) remain unresolved.
+                interval_complete=False, visibility_sufficient=True, schema_valid=True,  # visibility via rule predicates
+                parse_status="ok", limitations=[], elapsed_ms=int((time.monotonic() - t0) * 1000),
+                model_version=self.model_version, prompt_sha256=prompt.prompt_sha256,
             )
 
     def close(self) -> None:
