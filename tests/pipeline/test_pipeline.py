@@ -216,3 +216,13 @@ def test_dark_frames_reported(tmp_path):
     report, _ = _run(tmp_path, _ctx(fakes.FakePerception(), media=Dark(fakes.meta())))
     assert report.quality.dark_frames == report.quality.sampled_frames
     assert any("тёмн" in n for n in report.quality.notes_ru)
+
+
+def test_model_limitation_text_not_in_reviewer_notice(tmp_path):
+    class Chatty(fakes.FakePerception):
+        def observe(self, req, work_dir, deadline):
+            b = super().observe(req, work_dir, deadline)
+            return b.model_copy(update={"limitations": ["MODEL-FREE-TEXT limitation"]})
+    report, _ = _run(tmp_path, _ctx(Chatty()))
+    assert "MODEL-FREE-TEXT" not in (report.coverage_notice_ru or "")
+    assert "MODEL-FREE-TEXT limitation" in report.coverage.visual_limitations  # kept privately

@@ -351,7 +351,8 @@ def analyze_job(
         completed_stages=list(run.stages),
         visual_limitations_ru=_dedup(run.limitations_ru)[:20],
         coverage_notice_ru=ctx.reporting.coverage_notice_ru(
-            jury.verdict, _dedup(run.limitations_ru + coverage.visual_limitations)[:5]),
+            # deterministic Russian notes only; raw model limitation text stays in the private report
+            jury.verdict, _dedup(run.limitations_ru)[:5]),
         events=report_events,
         review_notes=run.notes[:200],
         rule_coverage=rcov,

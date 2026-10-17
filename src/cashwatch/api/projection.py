@@ -54,9 +54,9 @@ def coverage_notice(report: AnalysisReport) -> str | None:
     # stored visual limitations verbatim rather than inventing text.
     if report.coverage_notice_ru:
         return report.coverage_notice_ru
+    # Only deterministic Russian limitations; free model text (coverage.visual_limitations) is
+    # never shown in the reviewer flow.
     lim = list(report.visual_limitations_ru)
-    if report.coverage is not None:
-        lim.extend(x for x in report.coverage.visual_limitations if x not in lim)
     return "; ".join(lim) if lim else None
 
 
